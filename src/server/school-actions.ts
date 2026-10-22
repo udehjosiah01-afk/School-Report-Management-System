@@ -1,23 +1,17 @@
-import { admin, getUser } from '@netlify/identity'
-import { and, asc, eq, inArray } from 'drizzle-orm'
 import { createServerFn } from '@tanstack/react-start'
 import { juniorSubjects, schoolClassNames, seniorSubjects } from '../data/curriculum'
-import {
-  academicTerms,
-  classSubjects,
-  schoolClasses,
-  schoolMemberships,
-  schools,
-  scoreEntries,
-  staffAssignments,
-  studentEnrollments,
-  studentSubjects,
-  students,
-  subjects,
-} from '../data/schema'
-import { requireStaff } from './auth'
-import { getDb } from './database'
 import { isUuid } from '../data/score-validation'
+
+async function loadServerDependencies() {
+  const [identity, drizzle, schema, auth, database] = await Promise.all([
+    import('@netlify/identity'),
+    import('drizzle-orm'),
+    import('../data/schema'),
+    import('./auth.server'),
+    import('./database'),
+  ])
+  return { ...identity, ...drizzle, ...schema, ...auth, ...database }
+}
 
 function objectInput(value: unknown) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -135,6 +129,7 @@ function validateAssignment(value: unknown) {
 export const registerSchool = createServerFn({ method: 'POST' })
   .validator(validateSchool)
   .handler(async ({ data }) => {
+    const { getUser, getDb, schoolMemberships, eq, schools, schoolClasses, subjects, classSubjects } = await loadServerDependencies()
     const identity = await getUser()
     if (!identity?.email) throw new Error('Create and verify your email account before registering a school.')
     const db = getDb()
@@ -193,6 +188,10 @@ export const registerSchool = createServerFn({ method: 'POST' })
   })
 
 export const getSchoolSetup = createServerFn({ method: 'GET' }).handler(async () => {
+  const {
+    requireStaff, getDb, schools, eq, schoolClasses, asc, staffAssignments, and,
+    subjects, classSubjects, academicTerms, studentEnrollments, students,
+  } = await loadServerDependencies()
   const staff = await requireStaff()
   const db = getDb()
   const isAdmin = staff.role === 'admin'
@@ -293,6 +292,7 @@ export const getSchoolSetup = createServerFn({ method: 'GET' }).handler(async ()
 export const createSchoolClass = createServerFn({ method: 'POST' })
   .validator(validateName)
   .handler(async ({ data }) => {
+    const { requireStaff, getDb, schoolClasses } = await loadServerDependencies()
     const staff = await requireStaff('admin')
     const [result] = await getDb().insert(schoolClasses).values({
       schoolId: staff.schoolId,
@@ -305,6 +305,7 @@ export const createSchoolClass = createServerFn({ method: 'POST' })
 export const createSubject = createServerFn({ method: 'POST' })
   .validator(validateName)
   .handler(async ({ data }) => {
+    const { requireStaff, getDb, subjects } = await loadServerDependencies()
     const staff = await requireStaff('admin')
     const [result] = await getDb().insert(subjects).values({
       schoolId: staff.schoolId,
@@ -317,6 +318,10 @@ export const createSubject = createServerFn({ method: 'POST' })
 export const saveClassSubjects = createServerFn({ method: 'POST' })
   .validator(validateClassSubjects)
   .handler(async ({ data }) => {
+    const {
+      requireStaff, getDb, schoolClasses, and, eq, subjects, inArray,
+      studentEnrollments, classSubjects,
+    } = await loadServerDependencies()
     const staff = await requireStaff('admin')
     const db = getDb()
     const [schoolClass] = await db.select({ id: schoolClasses.id })
@@ -365,6 +370,7 @@ export const saveClassSubjects = createServerFn({ method: 'POST' })
 export const createAcademicTerm = createServerFn({ method: 'POST' })
   .validator(validateTerm)
   .handler(async ({ data }) => {
+    const { requireStaff, getDb, academicTerms } = await loadServerDependencies()
     const staff = await requireStaff('admin')
     const [result] = await getDb().insert(academicTerms).values({
       schoolId: staff.schoolId,
@@ -377,6 +383,10 @@ export const createAcademicTerm = createServerFn({ method: 'POST' })
 export const createStudent = createServerFn({ method: 'POST' })
   .validator(validateStudent)
   .handler(async ({ data }) => {
+    const {
+      requireStaff, getDb, schoolClasses, and, eq, classSubjects, inArray,
+      students, studentEnrollments, studentSubjects,
+    } = await loadServerDependencies()
     const staff = await requireStaff('admin')
     const db = getDb()
     return db.transaction(async tx => {
@@ -438,6 +448,7 @@ export const createStudent = createServerFn({ method: 'POST' })
   })
 
 export const getSchoolStaff = createServerFn({ method: 'GET' }).handler(async () => {
+  const { requireStaff, getDb, schoolMemberships, eq, asc, admin } = await loadServerDependencies()
   const staff = await requireStaff('admin')
   const members = await getDb().select().from(schoolMemberships)
     .where(eq(schoolMemberships.schoolId, staff.schoolId))
@@ -456,6 +467,7 @@ export const getSchoolStaff = createServerFn({ method: 'GET' }).handler(async ()
 export const addSchoolStaff = createServerFn({ method: 'POST' })
   .validator(validateTeacherEmail)
   .handler(async ({ data }) => {
+    const { requireStaff, admin, getDb, schoolMemberships } = await loadServerDependencies()
     const staff = await requireStaff('admin')
     let matchingUser: { id: string } | undefined
     for (let page = 1; !matchingUser; page += 1) {
@@ -480,6 +492,7 @@ export const addSchoolStaff = createServerFn({ method: 'POST' })
 export const setStaffRole = createServerFn({ method: 'POST' })
   .validator(validateRole)
   .handler(async ({ data }) => {
+    const { requireStaff, getDb, schoolMemberships, and, eq } = await loadServerDependencies()
     const staff = await requireStaff('admin')
     const db = getDb()
     const [target] = await db.select()
@@ -511,6 +524,10 @@ export const setStaffRole = createServerFn({ method: 'POST' })
 export const assignTeacher = createServerFn({ method: 'POST' })
   .validator(validateAssignment)
   .handler(async ({ data }) => {
+    const {
+      requireStaff, getDb, schoolMemberships, and, eq, classSubjects,
+      staffAssignments,
+    } = await loadServerDependencies()
     const staff = await requireStaff('admin')
     const db = getDb()
     const [member] = await db.select({ id: schoolMemberships.id })
@@ -550,6 +567,10 @@ export const assignTeacher = createServerFn({ method: 'POST' })
 export const getScoreSheet = createServerFn({ method: 'GET' })
   .validator(validateScoreSheet)
   .handler(async ({ data }) => {
+    const {
+      requireStaff, getDb, academicTerms, and, eq, staffAssignments, classSubjects,
+      studentEnrollments, students, scoreEntries, studentSubjects, asc,
+    } = await loadServerDependencies()
     const staff = await requireStaff()
     const db = getDb()
     const [term] = await db.select({

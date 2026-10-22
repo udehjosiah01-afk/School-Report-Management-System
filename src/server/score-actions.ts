@@ -1,13 +1,20 @@
-import { and, eq } from 'drizzle-orm'
 import { createServerFn } from '@tanstack/react-start'
 import { validateDraftScoreInput } from '../data/score-validation'
-import { academicTerms, auditEvents, scoreEntries, staffAssignments, studentEnrollments, studentSubjects } from '../data/schema'
-import { requireStaff } from './auth'
-import { getDb } from './database'
 
 export const saveDraftScore = createServerFn({ method: 'POST' })
   .validator(validateDraftScoreInput)
   .handler(async ({ data }) => {
+    const [
+      { and, eq },
+      { academicTerms, auditEvents, scoreEntries, staffAssignments, studentEnrollments, studentSubjects },
+      { requireStaff },
+      { getDb },
+    ] = await Promise.all([
+      import('drizzle-orm'),
+      import('../data/schema'),
+      import('./auth.server'),
+      import('./database'),
+    ])
     const user = await requireStaff()
     const db = getDb()
 
