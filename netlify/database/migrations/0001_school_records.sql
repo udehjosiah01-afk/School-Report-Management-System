@@ -76,13 +76,6 @@ CREATE TABLE audit_events (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE TABLE system_settings (
-  key text PRIMARY KEY,
-  value jsonb NOT NULL,
-  updated_by text NOT NULL,
-  updated_at timestamptz NOT NULL DEFAULT now()
-);
-
 CREATE INDEX student_enrollments_class_year_idx
   ON student_enrollments (class_id, academic_year);
 CREATE INDEX score_entries_term_subject_idx

@@ -18,6 +18,13 @@ CREATE TABLE school_memberships (
   CONSTRAINT school_memberships_school_identity_unique UNIQUE (school_id, identity_user_id)
 );
 
+CREATE TABLE IF NOT EXISTS system_settings (
+  key text PRIMARY KEY,
+  value jsonb NOT NULL,
+  updated_by text NOT NULL,
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
 INSERT INTO schools (name, address, phone, contact_email)
 SELECT 'Migrated school workspace', 'Not provided', 'Not provided', 'migration@invalid.local'
 WHERE EXISTS (SELECT 1 FROM school_classes)
