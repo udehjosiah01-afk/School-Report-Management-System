@@ -4,13 +4,15 @@ import { useEffect, useState } from 'react'
 import { getCurrentStaff } from '../server/auth'
 import {
   assignTeacher,
+  addSchoolStaff,
   createAcademicTerm,
   createSchoolClass,
   createStudent,
   createSubject,
-  getIdentityStaff,
+  getSchoolStaff,
   getSchoolSetup,
   getScoreSheet,
+  saveClassSubjects,
   setStaffRole,
 } from '../server/school-actions'
 import { saveDraftScore } from '../server/score-actions'
@@ -38,8 +40,10 @@ function SchoolData() {
   const [termName, setTermName] = useState('First Term')
   const [student, setStudent] = useState({ admissionNumber: '', firstName: '', lastName: '', classId: '', subjectIds: [] as string[] })
   const [teacherAssignments, setTeacherAssignments] = useState({ identityUserId: '', classId: '', subjectId: '' })
-  const [staffList, setStaffList] = useState<Awaited<ReturnType<typeof getIdentityStaff>>>([])
-  const [staffRole, setStaffRoleValue] = useState({ identityUserId: '', role: 'teacher' })
+  const [staffEmail, setStaffEmail] = useState('')
+  const [staffList, setStaffList] = useState<Awaited<ReturnType<typeof getSchoolStaff>>>([])
+  const [staffRole, setStaffRoleValue] = useState({ membershipId: '', role: 'teacher' })
+  const [classSubjectSelection, setClassSubjectSelection] = useState({ classId: '', subjectIds: [] as string[] })
   const [sheetSelection, setSheetSelection] = useState({ classId: '', subjectId: '', termId: '' })
   const [loadedSheetSelection, setLoadedSheetSelection] = useState<typeof sheetSelection | null>(null)
   const [scoreRows, setScoreRows] = useState<Awaited<ReturnType<typeof getScoreSheet>>>([])
@@ -49,13 +53,24 @@ function SchoolData() {
     loadedSheetSelection.termId === sheetSelection.termId
 
   useEffect(() => {
-    if (!student.classId && setup.classes[0]) setStudent(current => ({ ...current, classId: setup.classes[0].id }))
+    if (!student.classId && setup.classes[0]) {
+      const classId = setup.classes[0].id
+      const subjectIds = setup.classSubjects.filter(item => item.classId === classId).map(item => item.subjectId)
+      setStudent(current => ({ ...current, classId, subjectIds }))
+    }
+    if (!classSubjectSelection.classId && setup.classes[0]) {
+      const classId = setup.classes[0].id
+      const subjectIds = setup.classSubjects.filter(item => item.classId === classId).map(item => item.subjectId)
+      setClassSubjectSelection({ classId, subjectIds })
+    }
     setSheetSelection(current => ({
       classId: current.classId || setup.classes[0]?.id || '',
-      subjectId: current.subjectId || setup.subjects[0]?.id || '',
+      subjectId: current.subjectId || setup.subjects.find(subject =>
+        setup.classSubjects.some(item => item.classId === (current.classId || setup.classes[0]?.id) && item.subjectId === subject.id),
+      )?.id || '',
       termId: current.termId || setup.terms[0]?.id || '',
     }))
-  }, [setup, student.classId])
+  }, [setup, student.classId, classSubjectSelection.classId])
 
   async function refresh(message: string) {
     setNotice(message)
@@ -93,7 +108,7 @@ function SchoolData() {
   async function loadStaff() {
     setError('')
     try {
-      setStaffList(await getIdentityStaff())
+      setStaffList(await getSchoolStaff())
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Staff accounts could not be loaded.')
     }
@@ -111,13 +126,15 @@ function SchoolData() {
     </header>
     <div className="records-content">
       <div className="eyebrow">CONNECTED SCHOOL WORKSPACE</div>
-      <h1>School records</h1>
+      <h1>{setup.school?.name ?? 'School records'}</h1>
+      {setup.school && <p className="school-profile-line">{setup.school.address} · {setup.school.phone} · {setup.school.contactEmail}{setup.school.motto ? ` · ${setup.school.motto}` : ''}</p>}
       <p>Records entered here are saved in your Netlify Database. Draft scores are restricted to assigned staff and unpublished terms.</p>
       {notice && <p className="form-notice" role="status">{notice}</p>}
       {error && <p className="form-error" role="alert">{error}</p>}
 
       {isAdmin && <section className="records-section">
-        <h2>Set up classes, subjects, and terms</h2>
+        <h2>Classes, subjects, and terms</h2>
+        <p>JSS 1 and JSS 2 start with the 17 subjects in your uploaded report template. Configure JSS 3 when you provide its list. Set each class’s subjects before enrolling its students.</p>
         <div className="records-grid">
           <form className="record-form" onSubmit={event => {
             event.preventDefault()
@@ -147,6 +164,21 @@ function SchoolData() {
             <button className="primary" type="submit">Save term</button>
           </form>
         </div>
+        <form className="record-form class-subject-form" onSubmit={event => {
+          event.preventDefault()
+          void run(() => saveClassSubjects({ data: classSubjectSelection }), 'Class subject list saved.')
+        }}>
+          <h3>Configure subjects for a class</h3>
+          <label>Class<select required value={classSubjectSelection.classId} onChange={event => {
+            const classId = event.target.value
+            setClassSubjectSelection({
+              classId,
+              subjectIds: setup.classSubjects.filter(item => item.classId === classId).map(item => item.subjectId),
+            })
+          }}><option value="">Select class</option>{setup.classes.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+          <fieldset className="subject-registration"><legend>Subjects on this class’s report card</legend>{setup.subjects.map(item => <label key={item.id}><input type="checkbox" checked={classSubjectSelection.subjectIds.includes(item.id)} onChange={event => setClassSubjectSelection(current => ({ ...current, subjectIds: event.target.checked ? [...current.subjectIds, item.id] : current.subjectIds.filter(id => id !== item.id) }))} />{item.name}</label>)}</fieldset>
+          <button className="primary" type="submit" disabled={!classSubjectSelection.classId}>Save class subjects</button>
+        </form>
       </section>}
 
       {isAdmin && <section className="records-section">
@@ -161,29 +193,51 @@ function SchoolData() {
           <label>Admission number<input required maxLength={40} value={student.admissionNumber} onChange={event => setStudent({ ...student, admissionNumber: event.target.value })} /></label>
           <label>First name<input required maxLength={80} value={student.firstName} onChange={event => setStudent({ ...student, firstName: event.target.value })} /></label>
           <label>Last name<input required maxLength={80} value={student.lastName} onChange={event => setStudent({ ...student, lastName: event.target.value })} /></label>
-          <label>Class<select required value={student.classId} onChange={event => setStudent({ ...student, classId: event.target.value })}><option value="">Select class</option>{setup.classes.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+          <label>Class<select required value={student.classId} onChange={event => {
+            const classId = event.target.value
+            setStudent({
+              ...student,
+              classId,
+              subjectIds: setup.classSubjects.filter(item => item.classId === classId).map(item => item.subjectId),
+            })
+          }}><option value="">Select class</option>{setup.classes.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
           <label>Academic year<input required maxLength={20} value={academicYear} onChange={event => setAcademicYear(event.target.value)} placeholder="2025 / 2026" /></label>
-          <fieldset className="subject-registration"><legend>Subjects registered for this student</legend>{setup.subjects.map(item => <label key={item.id}><input type="checkbox" checked={student.subjectIds.includes(item.id)} onChange={event => setStudent(current => ({ ...current, subjectIds: event.target.checked ? [...current.subjectIds, item.id] : current.subjectIds.filter(id => id !== item.id) }))} />{item.name}</label>)}</fieldset>
+          <fieldset className="subject-registration"><legend>Subjects registered for this student</legend>{setup.subjects.filter(item => setup.classSubjects.some(link => link.classId === student.classId && link.subjectId === item.id)).map(item => <label key={item.id}><input type="checkbox" checked={student.subjectIds.includes(item.id)} onChange={event => setStudent(current => ({ ...current, subjectIds: event.target.checked ? [...current.subjectIds, item.id] : current.subjectIds.filter(id => id !== item.id) }))} />{item.name}</label>)}{!student.subjectIds.length && <span>Configure subjects for this class before enrolling students.</span>}</fieldset>
           <button className="primary" type="submit" disabled={!setup.classes.length || !student.subjectIds.length}>Save student</button>
         </form>
       </section>}
 
       {isAdmin && <section className="records-section">
-        <div className="section-heading"><div><h2>Staff accounts and assignments</h2><p>Invite accounts in Netlify Identity first. Assign each account a staff role here, then choose the classes and subjects teachers may edit.</p></div><button className="secondary" onClick={() => void loadStaff()}>Load staff accounts</button></div>
+        <div className="section-heading"><div><h2>Staff accounts and assignments</h2><p>Invite the staff member in Netlify Identity first, then add their email to this school and assign their access.</p></div><button className="secondary" onClick={() => void loadStaff()}>Load school staff</button></div>
+        <form className="record-form enrollment-form" onSubmit={event => {
+          event.preventDefault()
+          void run(() => addSchoolStaff({ data: { email: staffEmail } }), 'Teacher added to this school.')
+            .then(saved => { if (saved) { setStaffEmail(''); void loadStaff() } })
+        }}>
+          <label>Invited staff email<input required type="email" value={staffEmail} onChange={event => setStaffEmail(event.target.value)} /></label>
+          <button className="primary" type="submit">Add teacher account</button>
+        </form>
+        {staffList.length > 0 && <div className="records-table-wrap"><table className="records-table"><thead><tr><th>Staff email</th><th>Current role</th><th>Change role</th></tr></thead><tbody>{staffList.map(item => <tr key={item.id}>
+          <td>{item.email}</td><td>{item.role}</td><td><select aria-label={`Role for ${item.email}`} value={item.role} onChange={event => {
+            const role = event.target.value
+            setStaffRoleValue({ membershipId: item.id, role })
+            void run(() => setStaffRole({ data: { membershipId: item.id, role } }), 'Staff role updated.')
+          }}><option value="teacher">Teacher</option><option value="admin">Administrator</option></select></td>
+        </tr>)}</tbody></table></div>}
         <form className="record-form enrollment-form" onSubmit={event => {
           event.preventDefault()
           void run(() => setStaffRole({ data: staffRole }), 'Staff role saved. Sign in again for the new role to take effect.')
         }}>
-          <label>Identity account<select required value={staffRole.identityUserId} onChange={event => setStaffRoleValue({ ...staffRole, identityUserId: event.target.value })}><option value="">Select account</option>{staffList.map(item => <option key={item.id} value={item.id}>{item.email || item.id} · {item.roles.join(', ') || 'no role'}</option>)}</select></label>
+          <label>School staff member<select required value={staffRole.membershipId} onChange={event => setStaffRoleValue({ ...staffRole, membershipId: event.target.value })}><option value="">Select account</option>{staffList.map(item => <option key={item.id} value={item.id}>{item.email || item.id} · {item.role}</option>)}</select></label>
           <label>Role<select value={staffRole.role} onChange={event => setStaffRoleValue({ ...staffRole, role: event.target.value })}><option value="teacher">Teacher</option><option value="admin">Administrator</option></select></label>
-          <button className="primary" type="submit" disabled={!staffRole.identityUserId}>Save role</button>
+          <button className="primary" type="submit" disabled={!staffRole.membershipId}>Save role</button>
         </form>
         <h3>Assign a teacher</h3>
         <form className="record-form enrollment-form" onSubmit={event => {
           event.preventDefault()
           void run(() => assignTeacher({ data: teacherAssignments }), 'Teacher assignment saved.')
         }}>
-          <label>Teacher account<select required value={teacherAssignments.identityUserId} onChange={event => setTeacherAssignments({ ...teacherAssignments, identityUserId: event.target.value })}><option value="">Select teacher</option>{staffList.filter(item => item.roles.includes('teacher')).map(item => <option key={item.id} value={item.id}>{item.email}</option>)}</select></label>
+          <label>Teacher account<select required value={teacherAssignments.identityUserId} onChange={event => setTeacherAssignments({ ...teacherAssignments, identityUserId: event.target.value })}><option value="">Select teacher</option>{staffList.filter(item => item.role === 'teacher').map(item => <option key={item.id} value={item.identityUserId}>{item.email}</option>)}</select></label>
           <label>Class<select required value={teacherAssignments.classId} onChange={event => setTeacherAssignments({ ...teacherAssignments, classId: event.target.value })}><option value="">Select class</option>{setup.classes.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
           <label>Subject<select required value={teacherAssignments.subjectId} onChange={event => setTeacherAssignments({ ...teacherAssignments, subjectId: event.target.value })}><option value="">Select subject</option>{setup.subjects.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
           <button className="primary" type="submit">Save assignment</button>

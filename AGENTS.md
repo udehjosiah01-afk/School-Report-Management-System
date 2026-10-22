@@ -1,20 +1,21 @@
 # Classfolio architecture
 
-Read `PLAN.md` before continuing implementation. The completed milestone is the visible product workspace; persistent data and authentication are subsequent milestones.
+Read `PLAN.md` before continuing implementation.
 
-- `src/routes/index.tsx`: overview, score sheet, report preview, filters, print and CSV actions. Screens currently use local component state.
-- `src/data/fixtures.ts`: illustrative records, workbook subjects, classes, terms, and initial scores. This is the replacement point for future real records.
-- `src/data/workbook-calculations.ts`: workbook-derived score validation limits and term-specific grade, remark, average, and ranking helpers.
-- `src/data/workbook-calculations.test.ts`: regression tests for the intentional workbook calculation rules.
-- `src/data/schema.ts`: Drizzle schema for persistent school records.
-- `src/server/auth.ts`: Netlify Identity staff authorization helpers.
-- `src/server/school-actions.ts` and `src/server/score-actions.ts`: role-guarded server data operations.
-- `src/routes/login.tsx` and `src/routes/school-data.tsx`: invite-based staff sign-in and connected school records workspace.
-- `netlify/database/migrations/`: Netlify Database SQL migrations.
-- `src/routes/__root.tsx`: page metadata and document shell.
-- `src/styles.css`: sage and cream design system, responsive layouts, print rules, and reduced-motion support.
+- `src/routes/index.tsx`: fixture-backed overview, score sheet, report preview, filters, print, and CSV actions. Demonstration edits stay in memory and reset on refresh.
+- `src/data/fixtures.ts`: fictional student records, senior workbook subjects, classes, terms, and initial demonstration scores.
+- `src/data/curriculum.ts`: JSS and senior curricula and class defaults. Keep JSS 3 unconfigured until its subjects are provided.
+- `src/data/workbook-calculations.ts` and `src/data/workbook-calculations.test.ts`: workbook-derived score rules and regression coverage.
+- `src/data/schema.ts` and `netlify/database/migrations/`: tenant-aware persistent school records.
+- `src/server/auth.ts`: Netlify Identity authentication and school-membership authorization.
+- `src/server/school-actions.ts` and `src/server/score-actions.ts`: server-side school setup, staff, roster, assignment, and draft-score operations. Enforce administrator/teacher permissions and school ownership in every operation.
+- `src/routes/signup.tsx`, `src/routes/school-setup.tsx`, and `src/routes/login.tsx`: email-confirmed school owner signup, school profile setup, and staff sign-in.
+- `src/routes/school-data.tsx`: connected school administration and draft-score workspace.
+- `src/styles.css`: sage and cream design system, responsive layouts, and print rules, including the junior report preview.
 - `netlify.toml` and `vite.config.ts`: deployment and TanStack Start integration.
 
-Keep calculations derived from the selected class, term, subject, and score state. Test and examination score limits are 40 and 60. Preserve the supplied workbook's intentional term- and subject-specific grade/remark thresholds, competition ranking (1, 1, 3; no rank for scores at or below zero), third-term three-term subject averaging rounded to one decimal, and thirteen-subject aggregate divided by ten. Keep regression tests for these formulas; do not normalize thresholds, silently correct the divisor, or treat the workbook's calculation quirks as defects. Demo score edits remain in memory and reset on refresh; never imply they are persisted.
+Preserve the senior workbook's intentional term- and subject-specific grade/remark thresholds, competition ranking (1, 1, 3; no rank for scores at or below zero), third-term three-term subject averaging rounded to one decimal, and thirteen-subject aggregate divided by ten. Do not normalize thresholds, correct the divisor, or treat these rules as defects. Test and examination score limits are 40 and 60.
 
-Use Netlify Database with Drizzle for persistent school records and Netlify Identity for staff authentication. The first migration and server-guarded draft-score operation are foundations only; the visible workspace remains fixture-backed until its roster/setup and score-entry flows are connected to the database. Keep administrator and teacher permissions enforced in every server operation, not only in the interface. Do not persist school records in local files or browser storage. Keep real workbook student details out of demonstration fixtures. Use accessible labels for controls and preserve mobile and print layouts.
+The uploaded junior report template defines 17 subjects for JSS 1 and JSS 2. JSS 3 remains unconfigured for later setup. Do not invent junior grading, average, remark, or ranking formulas; ask for the approved rules before calculating those fields. Never reuse the template's sample-school identity as generic branding.
+
+The fixture-backed preview is not persistent and must not be described as saved. It remains separate from tenant records until the roster, score-entry, calculation, and report flows are deliberately connected. Do not store school records in local files or browser storage. Keep real workbook student details out of demonstration fixtures. Use accessible labels and preserve mobile and print layouts.

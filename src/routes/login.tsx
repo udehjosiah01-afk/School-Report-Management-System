@@ -1,12 +1,13 @@
-import { acceptInvite, handleAuthCallback, login, logout } from '@netlify/identity'
+import { acceptInvite, handleAuthCallback, login } from '@netlify/identity'
 import { createFileRoute, redirect } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
-import { getCurrentStaff } from '../server/auth'
-import { bootstrapInitialAdministrator } from '../server/school-actions'
+import { getCurrentIdentity, getCurrentStaff } from '../server/auth'
 
 export const Route = createFileRoute('/login')({
   beforeLoad: async () => {
-    if (await getCurrentStaff()) throw redirect({ to: '/school-data' })
+    const identity = await getCurrentIdentity()
+    if (!identity) return
+    throw redirect({ to: await getCurrentStaff() ? '/school-data' : '/school-setup' })
   },
   component: Login,
 })
@@ -22,14 +23,17 @@ function Login() {
   useEffect(() => {
     let active = true
     void handleAuthCallback()
-      .then(result => {
+      .then(async result => {
         if (!active || !result) return
         if (result.type === 'invite' && result.token) {
           setInviteToken(result.token)
           return
         }
-        if (result.user?.roles?.some(role => role === 'admin' || role === 'teacher')) {
-          window.location.assign('/school-data')
+        if (result.type === 'confirmation' && result.user) {
+          const staff = await getCurrentStaff()
+          window.location.assign(staff ? '/school-data' : '/school-setup')
+        } else if (result.user) {
+          window.location.assign(await getCurrentStaff() ? '/school-data' : '/school-setup')
         } else {
           setError('Your account does not have a school staff role. Ask your administrator for access.')
         }
@@ -51,25 +55,9 @@ function Login() {
       const user = inviteToken
         ? await acceptInvite(inviteToken, password)
         : await login(email.trim(), password)
-      const accountEmail = user.email ?? email.trim()
       if (user.email) setEmail(user.email)
-      if (!user.roles?.some(role => role === 'admin' || role === 'teacher')) {
-        try {
-          await bootstrapInitialAdministrator()
-          await logout()
-          const refreshedUser = await login(accountEmail, password)
-          if (refreshedUser.roles?.includes('admin')) {
-            window.location.assign('/school-data')
-            return
-          }
-        } catch (reason) {
-          await logout()
-          throw new Error(reason instanceof Error ? reason.message : 'Your account does not have a school staff role. Ask your administrator for access.')
-        }
-        await logout()
-        throw new Error('Your account does not have a school staff role. Ask your administrator for access.')
-      }
-      window.location.assign('/school-data')
+      const staff = await getCurrentStaff()
+      window.location.assign(staff ? '/school-data' : '/school-setup')
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Sign-in failed. Please try again.')
       setSubmitting(false)
@@ -89,7 +77,7 @@ function Login() {
         {error && <p className="form-error" role="alert">{error}</p>}
         <button className="primary" type="submit" disabled={submitting}>{submitting ? 'Please wait…' : inviteToken ? 'Set password' : 'Sign in'}</button>
       </form>
-      <p className="auth-note">Accounts are invite-only. Contact your school administrator if you need access or a staff role.</p>
+      <p className="auth-note">Staff accounts are invited by their school administrator. <a href="/signup">Register your school</a> to get started.</p>
     </section>
   </main>
 }

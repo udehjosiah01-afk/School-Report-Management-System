@@ -20,6 +20,9 @@ export const saveDraftScore = createServerFn({ method: 'POST' })
         eq(academicTerms.academicYear, studentEnrollments.academicYear),
       ))
       .where(and(
+        eq(studentSubjects.schoolId, user.schoolId),
+        eq(studentEnrollments.schoolId, user.schoolId),
+        eq(academicTerms.schoolId, user.schoolId),
         eq(studentEnrollments.id, data.enrollmentId),
         eq(studentSubjects.subjectId, data.subjectId),
         eq(academicTerms.isPublished, false),
@@ -30,12 +33,13 @@ export const saveDraftScore = createServerFn({ method: 'POST' })
       throw new Error('This enrollment and term do not match, or the term is already published.')
     }
 
-    if (!user.roles?.includes('admin')) {
+    if (user.role !== 'admin') {
       const [assignment] = await db
         .select({ id: staffAssignments.id })
         .from(staffAssignments)
         .where(and(
           eq(staffAssignments.identityUserId, user.id),
+          eq(staffAssignments.schoolId, user.schoolId),
           eq(staffAssignments.classId, scope.classId),
           eq(staffAssignments.subjectId, data.subjectId),
         ))
@@ -50,12 +54,18 @@ export const saveDraftScore = createServerFn({ method: 'POST' })
       const [entry] = await tx
         .insert(scoreEntries)
         .values({
+          schoolId: user.schoolId,
           ...data,
           enteredBy: user.id,
           updatedAt: new Date(),
         })
         .onConflictDoUpdate({
-          target: [scoreEntries.enrollmentId, scoreEntries.subjectId, scoreEntries.termId],
+          target: [
+            scoreEntries.schoolId,
+            scoreEntries.enrollmentId,
+            scoreEntries.subjectId,
+            scoreEntries.termId,
+          ],
           set: {
             testScore: data.testScore,
             examScore: data.examScore,
@@ -75,6 +85,7 @@ export const saveDraftScore = createServerFn({ method: 'POST' })
       }
 
       await tx.insert(auditEvents).values({
+        schoolId: user.schoolId,
         identityUserId: user.id,
         action: 'score.draft.saved',
         entityId: entry.id,

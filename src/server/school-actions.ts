@@ -1,10 +1,30 @@
 import { admin, getUser } from '@netlify/identity'
-import { and, asc, eq } from 'drizzle-orm'
+import { and, asc, eq, inArray } from 'drizzle-orm'
 import { createServerFn } from '@tanstack/react-start'
-import { academicTerms, schoolClasses, scoreEntries, staffAssignments, studentEnrollments, studentSubjects, students, subjects, systemSettings } from '../data/schema'
+import { juniorSubjects, schoolClassNames, seniorSubjects } from '../data/curriculum'
+import {
+  academicTerms,
+  classSubjects,
+  schoolClasses,
+  schoolMemberships,
+  schools,
+  scoreEntries,
+  staffAssignments,
+  studentEnrollments,
+  studentSubjects,
+  students,
+  subjects,
+} from '../data/schema'
 import { requireStaff } from './auth'
 import { getDb } from './database'
 import { isUuid } from '../data/score-validation'
+
+function objectInput(value: unknown) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('A valid form submission is required.')
+  }
+  return value as Record<string, unknown>
+}
 
 function requiredText(value: unknown, label: string, maxLength = 120) {
   if (typeof value !== 'string' || value.trim().length === 0 || value.trim().length > maxLength) {
@@ -14,177 +34,270 @@ function requiredText(value: unknown, label: string, maxLength = 120) {
 }
 
 function requiredId(value: unknown, label: string) {
-  if (!isUuid(value)) {
-    throw new Error(`${label} is invalid.`)
-  }
+  if (!isUuid(value)) throw new Error(`${label} is invalid.`)
   return value
 }
 
+function validateSchool(value: unknown) {
+  const input = objectInput(value)
+  const contactEmail = requiredText(input.contactEmail, 'School contact email', 254).toLowerCase()
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail)) {
+    throw new Error('Enter a valid school contact email address.')
+  }
+  return {
+    name: requiredText(input.name, 'School name', 160),
+    address: requiredText(input.address, 'School address', 300),
+    phone: requiredText(input.phone, 'School phone number', 40),
+    contactEmail,
+    motto: typeof input.motto === 'string' ? input.motto.trim().slice(0, 160) : '',
+  }
+}
+
 function validateName(value: unknown) {
-  return { name: requiredText((value as Record<string, unknown>)?.name, 'Name') }
+  return { name: requiredText(objectInput(value).name, 'Name') }
 }
 
 function validateTerm(value: unknown) {
-  const input = value as Record<string, unknown> | null
-  const name = requiredText(input?.name, 'Term')
+  const input = objectInput(value)
+  const name = requiredText(input.name, 'Term')
   if (!['First Term', 'Second Term', 'Third Term'].includes(name)) {
     throw new Error('Select First Term, Second Term, or Third Term.')
   }
   return {
     name,
-    academicYear: requiredText(input?.academicYear, 'Academic year', 20),
+    academicYear: requiredText(input.academicYear, 'Academic year', 20),
   }
 }
 
 function validateStudent(value: unknown) {
-  const input = value as Record<string, unknown> | null
-  const rawSubjectIds = input?.subjectIds
-  if (
-    !Array.isArray(rawSubjectIds) ||
-    rawSubjectIds.length === 0 ||
-    rawSubjectIds.length > 50
-  ) {
-    throw new Error('Select one or more registered subjects for this student.')
+  const input = objectInput(value)
+  const rawSubjectIds = input.subjectIds
+  if (!Array.isArray(rawSubjectIds) || rawSubjectIds.length === 0 || rawSubjectIds.length > 50) {
+    throw new Error('Select one or more subjects registered for this class.')
   }
   const subjectIds = rawSubjectIds.map(subjectId => requiredId(subjectId, 'Subject'))
   if (new Set(subjectIds).size !== subjectIds.length) {
     throw new Error('A subject can only be selected once.')
   }
   return {
-    admissionNumber: requiredText(input?.admissionNumber, 'Admission number', 40),
-    firstName: requiredText(input?.firstName, 'First name', 80),
-    lastName: requiredText(input?.lastName, 'Last name', 80),
-    classId: requiredId(input?.classId, 'Class'),
-    academicYear: requiredText(input?.academicYear, 'Academic year', 20),
+    admissionNumber: requiredText(input.admissionNumber, 'Admission number', 40),
+    firstName: requiredText(input.firstName, 'First name', 80),
+    lastName: requiredText(input.lastName, 'Last name', 80),
+    classId: requiredId(input.classId, 'Class'),
+    academicYear: requiredText(input.academicYear, 'Academic year', 20),
     subjectIds,
   }
 }
 
 function validateScoreSheet(value: unknown) {
-  const input = value as Record<string, unknown> | null
+  const input = objectInput(value)
   return {
-    classId: requiredId(input?.classId, 'Class'),
-    subjectId: requiredId(input?.subjectId, 'Subject'),
-    termId: requiredId(input?.termId, 'Term'),
+    classId: requiredId(input.classId, 'Class'),
+    subjectId: requiredId(input.subjectId, 'Subject'),
+    termId: requiredId(input.termId, 'Term'),
   }
+}
+
+function validateClassSubjects(value: unknown) {
+  const input = objectInput(value)
+  const rawSubjectIds = input.subjectIds
+  if (!Array.isArray(rawSubjectIds) || rawSubjectIds.length > 50) {
+    throw new Error('Choose a valid subject list.')
+  }
+  const subjectIds = rawSubjectIds.map(subjectId => requiredId(subjectId, 'Subject'))
+  if (new Set(subjectIds).size !== subjectIds.length) throw new Error('A subject can only be selected once.')
+  return { classId: requiredId(input.classId, 'Class'), subjectIds }
+}
+
+function validateTeacherEmail(value: unknown) {
+  const input = objectInput(value)
+  const email = requiredText(input.email, 'Staff email', 254).toLowerCase()
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('Enter a valid staff email address.')
+  return { email }
+}
+
+function validateRole(value: unknown) {
+  const input = objectInput(value)
+  const role = requiredText(input.role, 'Staff role', 20)
+  if (role !== 'admin' && role !== 'teacher') throw new Error('Select administrator or teacher.')
+  return { membershipId: requiredId(input.membershipId, 'Staff member'), role }
 }
 
 function validateAssignment(value: unknown) {
-  const input = value as Record<string, unknown> | null
+  const input = objectInput(value)
   return {
-    identityUserId: requiredText(input?.identityUserId, 'Staff account ID', 120),
-    classId: requiredId(input?.classId, 'Class'),
-    subjectId: requiredId(input?.subjectId, 'Subject'),
+    identityUserId: requiredText(input.identityUserId, 'Staff account ID', 120),
+    classId: requiredId(input.classId, 'Class'),
+    subjectId: requiredId(input.subjectId, 'Subject'),
   }
 }
 
-export const bootstrapInitialAdministrator = createServerFn({ method: 'POST' }).handler(async () => {
-  const user = await getUser()
-  if (!user?.email) {
-    throw new Error('Sign in with the invited initial administrator account before starting setup.')
-  }
+export const registerSchool = createServerFn({ method: 'POST' })
+  .validator(validateSchool)
+  .handler(async ({ data }) => {
+    const identity = await getUser()
+    if (!identity?.email) throw new Error('Create and verify your email account before registering a school.')
+    const db = getDb()
+    return db.transaction(async tx => {
+      const [existingMembership] = await tx
+        .select({ id: schoolMemberships.id })
+        .from(schoolMemberships)
+        .where(eq(schoolMemberships.identityUserId, identity.id))
+        .limit(1)
+      if (existingMembership) throw new Error('This account already belongs to a school.')
 
-  const expectedEmail = process.env.CLASSFOLIO_INITIAL_ADMIN_EMAIL?.trim().toLowerCase()
-  if (!expectedEmail) {
-    throw new Error('Initial administrator setup is not enabled. Configure CLASSFOLIO_INITIAL_ADMIN_EMAIL for the invited account.')
-  }
-  if (user.email.toLowerCase() !== expectedEmail) {
-    throw new Error('This signed-in account is not the configured initial administrator.')
-  }
+      const [school] = await tx.insert(schools).values(data).returning()
+      if (!school) throw new Error('Your school profile could not be created.')
 
-  let page = 1
-  while (true) {
-    const users = await admin.listUsers({ page, perPage: 100 })
-    if (users.some(candidate => candidate.roles?.includes('admin'))) {
-      throw new Error('An administrator is already set up. Ask them to assign your staff role.')
-    }
-    if (users.length < 100) break
-    page += 1
-  }
+      const [membership] = await tx.insert(schoolMemberships).values({
+        schoolId: school.id,
+        identityUserId: identity.id,
+        role: 'admin',
+      }).returning()
+      if (!membership) throw new Error('Your school administrator account could not be created.')
 
-  const db = getDb()
-  return db.transaction(async tx => {
-    const [claim] = await tx
-      .insert(systemSettings)
-      .values({
-        key: 'initial_administrator',
-        value: { identityUserId: user.id },
-        updatedBy: user.id,
+      const classRows = await tx.insert(schoolClasses).values(
+        schoolClassNames.map(name => ({ schoolId: school.id, name })),
+      ).returning()
+      const curriculumNames = [...new Set([...juniorSubjects, ...seniorSubjects])]
+      const subjectRows = await tx.insert(subjects).values(
+        curriculumNames.map(name => ({ schoolId: school.id, name })),
+      ).returning()
+      const subjectByName = new Map(subjectRows.map(subject => [subject.name, subject.id]))
+      const subjectRowsForClass = classRows.flatMap(schoolClass => {
+        const names = schoolClass.name === 'JSS 1' || schoolClass.name === 'JSS 2'
+          ? juniorSubjects
+          : schoolClass.name.startsWith('SS ')
+            ? seniorSubjects
+            : []
+        return names.map(name => ({
+          schoolId: school.id,
+          classId: schoolClass.id,
+          subjectId: subjectByName.get(name)!,
+        }))
       })
-      .onConflictDoNothing()
-      .returning({ key: systemSettings.key })
+      if (subjectRowsForClass.length) await tx.insert(classSubjects).values(subjectRowsForClass)
 
-    if (!claim) {
-      throw new Error('Initial administrator setup has already been completed.')
-    }
-
-    await admin.updateUser(user.id, {
-      app_metadata: {
-        ...(user.appMetadata ?? {}),
-        roles: ['admin'],
-      },
+      return {
+        school: {
+          id: school.id,
+          name: school.name,
+          address: school.address,
+          phone: school.phone,
+          contactEmail: school.contactEmail,
+          motto: school.motto,
+        },
+        membershipId: membership.id,
+      }
     })
-    return { email: user.email }
   })
-})
 
 export const getSchoolSetup = createServerFn({ method: 'GET' }).handler(async () => {
-  const user = await requireStaff()
+  const staff = await requireStaff()
   const db = getDb()
-  const isAdmin = user.roles?.includes('admin') ?? false
+  const isAdmin = staff.role === 'admin'
+  const schoolQuery = db.select({
+    id: schools.id,
+    name: schools.name,
+    address: schools.address,
+    phone: schools.phone,
+    contactEmail: schools.contactEmail,
+    motto: schools.motto,
+    logoUrl: schools.logoUrl,
+  }).from(schools).where(eq(schools.id, staff.schoolId)).limit(1)
   const classRows = isAdmin
-    ? await db.select().from(schoolClasses).orderBy(asc(schoolClasses.name))
+    ? await db.select().from(schoolClasses).where(eq(schoolClasses.schoolId, staff.schoolId)).orderBy(asc(schoolClasses.name))
     : await db.selectDistinct({
         id: schoolClasses.id,
+        schoolId: schoolClasses.schoolId,
         name: schoolClasses.name,
         createdAt: schoolClasses.createdAt,
       })
         .from(schoolClasses)
-        .innerJoin(staffAssignments, eq(staffAssignments.classId, schoolClasses.id))
-        .where(eq(staffAssignments.identityUserId, user.id))
+        .innerJoin(staffAssignments, and(
+          eq(staffAssignments.classId, schoolClasses.id),
+          eq(staffAssignments.schoolId, staff.schoolId),
+        ))
+        .where(eq(staffAssignments.identityUserId, staff.id))
         .orderBy(asc(schoolClasses.name))
   const subjectRows = isAdmin
-    ? await db.select().from(subjects).orderBy(asc(subjects.name))
+    ? await db.select().from(subjects).where(eq(subjects.schoolId, staff.schoolId)).orderBy(asc(subjects.name))
     : await db.selectDistinct({
         id: subjects.id,
+        schoolId: subjects.schoolId,
         name: subjects.name,
         createdAt: subjects.createdAt,
       })
         .from(subjects)
-        .innerJoin(staffAssignments, eq(staffAssignments.subjectId, subjects.id))
-        .where(eq(staffAssignments.identityUserId, user.id))
+        .innerJoin(staffAssignments, and(
+          eq(staffAssignments.subjectId, subjects.id),
+          eq(staffAssignments.schoolId, staff.schoolId),
+        ))
+        .where(eq(staffAssignments.identityUserId, staff.id))
         .orderBy(asc(subjects.name))
+  const classSubjectRows = await db
+    .select({
+      classId: classSubjects.classId,
+      subjectId: classSubjects.subjectId,
+    })
+    .from(classSubjects)
+    .where(eq(classSubjects.schoolId, staff.schoolId))
   const termRows = await db
     .select()
     .from(academicTerms)
+    .where(eq(academicTerms.schoolId, staff.schoolId))
     .orderBy(asc(academicTerms.academicYear), asc(academicTerms.name))
   const enrollmentQuery = db.selectDistinct({
-      id: studentEnrollments.id,
-      studentId: students.id,
-      admissionNumber: students.admissionNumber,
-      firstName: students.firstName,
-      lastName: students.lastName,
-      classId: schoolClasses.id,
-      className: schoolClasses.name,
-      academicYear: studentEnrollments.academicYear,
-    })
-      .from(studentEnrollments)
-      .innerJoin(students, eq(students.id, studentEnrollments.studentId))
-      .innerJoin(schoolClasses, eq(schoolClasses.id, studentEnrollments.classId))
+    id: studentEnrollments.id,
+    studentId: students.id,
+    admissionNumber: students.admissionNumber,
+    firstName: students.firstName,
+    lastName: students.lastName,
+    classId: schoolClasses.id,
+    className: schoolClasses.name,
+    academicYear: studentEnrollments.academicYear,
+  })
+    .from(studentEnrollments)
+    .innerJoin(students, and(
+      eq(students.id, studentEnrollments.studentId),
+      eq(students.schoolId, staff.schoolId),
+    ))
+    .innerJoin(schoolClasses, and(
+      eq(schoolClasses.id, studentEnrollments.classId),
+      eq(schoolClasses.schoolId, staff.schoolId),
+    ))
   const enrollmentRows = isAdmin
-    ? await enrollmentQuery.orderBy(asc(studentEnrollments.academicYear), asc(schoolClasses.name), asc(students.lastName))
-    : await enrollmentQuery
-        .innerJoin(staffAssignments, eq(staffAssignments.classId, studentEnrollments.classId))
-        .where(eq(staffAssignments.identityUserId, user.id))
+    ? await enrollmentQuery
+        .where(eq(studentEnrollments.schoolId, staff.schoolId))
         .orderBy(asc(studentEnrollments.academicYear), asc(schoolClasses.name), asc(students.lastName))
-  return { classes: classRows, subjects: subjectRows, terms: termRows, enrollments: enrollmentRows }
+    : await enrollmentQuery
+        .innerJoin(staffAssignments, and(
+          eq(staffAssignments.classId, studentEnrollments.classId),
+          eq(staffAssignments.schoolId, staff.schoolId),
+        ))
+        .where(and(
+          eq(studentEnrollments.schoolId, staff.schoolId),
+          eq(staffAssignments.identityUserId, staff.id),
+        ))
+        .orderBy(asc(studentEnrollments.academicYear), asc(schoolClasses.name), asc(students.lastName))
+  return {
+    school: (await schoolQuery)[0] ?? null,
+    classes: classRows,
+    subjects: subjectRows,
+    classSubjects: classSubjectRows,
+    terms: termRows,
+    enrollments: enrollmentRows,
+  }
 })
 
 export const createSchoolClass = createServerFn({ method: 'POST' })
   .validator(validateName)
   .handler(async ({ data }) => {
-    await requireStaff('admin')
-    const [result] = await getDb().insert(schoolClasses).values(data).returning()
+    const staff = await requireStaff('admin')
+    const [result] = await getDb().insert(schoolClasses).values({
+      schoolId: staff.schoolId,
+      ...data,
+    }).returning()
     if (!result) throw new Error('The class could not be created.')
     return result
   })
@@ -192,17 +305,71 @@ export const createSchoolClass = createServerFn({ method: 'POST' })
 export const createSubject = createServerFn({ method: 'POST' })
   .validator(validateName)
   .handler(async ({ data }) => {
-    await requireStaff('admin')
-    const [result] = await getDb().insert(subjects).values(data).returning()
+    const staff = await requireStaff('admin')
+    const [result] = await getDb().insert(subjects).values({
+      schoolId: staff.schoolId,
+      ...data,
+    }).returning()
     if (!result) throw new Error('The subject could not be created.')
     return result
+  })
+
+export const saveClassSubjects = createServerFn({ method: 'POST' })
+  .validator(validateClassSubjects)
+  .handler(async ({ data }) => {
+    const staff = await requireStaff('admin')
+    const db = getDb()
+    const [schoolClass] = await db.select({ id: schoolClasses.id })
+      .from(schoolClasses)
+      .where(and(eq(schoolClasses.id, data.classId), eq(schoolClasses.schoolId, staff.schoolId)))
+      .limit(1)
+    if (!schoolClass) throw new Error('The selected class is not part of your school.')
+
+    const validSubjects = data.subjectIds.length
+      ? await db.select({ id: subjects.id }).from(subjects).where(and(
+          eq(subjects.schoolId, staff.schoolId),
+          inArray(subjects.id, data.subjectIds),
+        ))
+      : []
+    if (validSubjects.length !== data.subjectIds.length) {
+      throw new Error('Every selected subject must belong to your school.')
+    }
+
+    const existingEnrollments = await db.select({ id: studentEnrollments.id })
+      .from(studentEnrollments)
+      .where(and(
+        eq(studentEnrollments.schoolId, staff.schoolId),
+        eq(studentEnrollments.classId, schoolClass.id),
+      ))
+      .limit(1)
+    if (existingEnrollments.length) {
+      throw new Error('Class subjects cannot be changed after students have been enrolled.')
+    }
+
+    await db.transaction(async tx => {
+      await tx.delete(classSubjects).where(and(
+        eq(classSubjects.schoolId, staff.schoolId),
+        eq(classSubjects.classId, data.classId),
+      ))
+      if (data.subjectIds.length) {
+        await tx.insert(classSubjects).values(data.subjectIds.map(subjectId => ({
+          schoolId: staff.schoolId,
+          classId: data.classId,
+          subjectId,
+        })))
+      }
+    })
+    return { saved: true }
   })
 
 export const createAcademicTerm = createServerFn({ method: 'POST' })
   .validator(validateTerm)
   .handler(async ({ data }) => {
-    await requireStaff('admin')
-    const [result] = await getDb().insert(academicTerms).values(data).returning()
+    const staff = await requireStaff('admin')
+    const [result] = await getDb().insert(academicTerms).values({
+      schoolId: staff.schoolId,
+      ...data,
+    }).returning()
     if (!result) throw new Error('The term could not be created.')
     return result
   })
@@ -210,37 +377,59 @@ export const createAcademicTerm = createServerFn({ method: 'POST' })
 export const createStudent = createServerFn({ method: 'POST' })
   .validator(validateStudent)
   .handler(async ({ data }) => {
-    await requireStaff('admin')
+    const staff = await requireStaff('admin')
     const db = getDb()
     return db.transaction(async tx => {
-      const [existingStudent] = await tx
-        .select({ id: students.id })
-        .from(students)
-        .where(eq(students.admissionNumber, data.admissionNumber))
+      const [schoolClass] = await tx.select({ id: schoolClasses.id })
+        .from(schoolClasses)
+        .where(and(eq(schoolClasses.id, data.classId), eq(schoolClasses.schoolId, staff.schoolId)))
         .limit(1)
-      const [createdStudent] = existingStudent
-        ? [existingStudent]
-        : await tx
-            .insert(students)
-            .values({
-              admissionNumber: data.admissionNumber,
-              firstName: data.firstName,
-              lastName: data.lastName,
-            })
-            .returning({ id: students.id })
-      if (!createdStudent) throw new Error('The student record could not be created.')
+      if (!schoolClass) throw new Error('The selected class is not part of your school.')
 
-      const [enrollment] = await tx
-        .insert(studentEnrollments)
-        .values({
-          studentId: createdStudent.id,
-          classId: data.classId,
-          academicYear: data.academicYear,
-        })
-        .returning()
+      const classSubjectRows = data.subjectIds.length
+        ? await tx.select({ subjectId: classSubjects.subjectId })
+            .from(classSubjects)
+            .where(and(
+              eq(classSubjects.schoolId, staff.schoolId),
+              eq(classSubjects.classId, data.classId),
+              inArray(classSubjects.subjectId, data.subjectIds),
+            ))
+        : []
+      if (classSubjectRows.length !== data.subjectIds.length) {
+        throw new Error('Students can only be enrolled in subjects configured for their class.')
+      }
+
+      const [existingStudent] = await tx.select()
+        .from(students)
+        .where(and(
+          eq(students.schoolId, staff.schoolId),
+          eq(students.admissionNumber, data.admissionNumber),
+        ))
+        .limit(1)
+      let student = existingStudent
+      if (student && (student.firstName !== data.firstName || student.lastName !== data.lastName)) {
+        throw new Error('That admission number is already registered to a different student.')
+      }
+      if (!student) {
+        const [created] = await tx.insert(students).values({
+          schoolId: staff.schoolId,
+          admissionNumber: data.admissionNumber,
+          firstName: data.firstName,
+          lastName: data.lastName,
+        }).returning()
+        if (!created) throw new Error('The student record could not be created.')
+        student = created
+      }
+
+      const [enrollment] = await tx.insert(studentEnrollments).values({
+        schoolId: staff.schoolId,
+        studentId: student.id,
+        classId: data.classId,
+        academicYear: data.academicYear,
+      }).returning()
       if (!enrollment) throw new Error('The student enrollment could not be created.')
-
       await tx.insert(studentSubjects).values(data.subjectIds.map(subjectId => ({
+        schoolId: staff.schoolId,
         enrollmentId: enrollment.id,
         subjectId,
       })))
@@ -248,82 +437,137 @@ export const createStudent = createServerFn({ method: 'POST' })
     })
   })
 
-export const getIdentityStaff = createServerFn({ method: 'GET' }).handler(async () => {
-  await requireStaff('admin')
-  const users = await admin.listUsers({ perPage: 100 })
-  return users.map(user => ({
-    id: user.id,
-    email: user.email ?? '',
-    roles: user.roles ?? [],
+export const getSchoolStaff = createServerFn({ method: 'GET' }).handler(async () => {
+  const staff = await requireStaff('admin')
+  const members = await getDb().select().from(schoolMemberships)
+    .where(eq(schoolMemberships.schoolId, staff.schoolId))
+    .orderBy(asc(schoolMemberships.createdAt))
+  return Promise.all(members.map(async member => {
+    const identity = await admin.getUser(member.identityUserId)
+    return {
+      id: member.id,
+      identityUserId: member.identityUserId,
+      email: identity.email ?? '',
+      role: member.role,
+    }
   }))
 })
 
-export const setStaffRole = createServerFn({ method: 'POST' })
-  .validator((value: unknown) => {
-    const input = value as Record<string, unknown> | null
-    const identityUserId = requiredText(input?.identityUserId, 'Staff account ID', 120)
-    const role = requiredText(input?.role, 'Staff role', 20)
-    if (role !== 'admin' && role !== 'teacher') {
-      throw new Error('Select administrator or teacher.')
-    }
-    return { identityUserId, role }
-  })
+export const addSchoolStaff = createServerFn({ method: 'POST' })
+  .validator(validateTeacherEmail)
   .handler(async ({ data }) => {
-    await requireStaff('admin')
-    const user = await admin.getUser(data.identityUserId)
-    const updated = await admin.updateUser(user.id, {
-      app_metadata: {
-        ...(user.appMetadata ?? {}),
-        roles: [data.role],
-      },
-    })
-    return { id: updated.id, email: updated.email ?? '', roles: updated.roles ?? [] }
-})
+    const staff = await requireStaff('admin')
+    let matchingUser: { id: string } | undefined
+    for (let page = 1; !matchingUser; page += 1) {
+      const users = await admin.listUsers({ page, perPage: 100 })
+      matchingUser = users.find(user => user.email?.toLowerCase() === data.email)
+      if (matchingUser || users.length < 100) break
+    }
+    if (!matchingUser) {
+      throw new Error('No Identity account matches that email. Invite the staff member in Netlify Identity first.')
+    }
+    if (matchingUser.id === staff.id) throw new Error('Your account is already a school administrator.')
+
+    const [member] = await getDb().insert(schoolMemberships).values({
+      schoolId: staff.schoolId,
+      identityUserId: matchingUser.id,
+      role: 'teacher',
+    }).returning({ id: schoolMemberships.id })
+    if (!member) throw new Error('This account already belongs to a school.')
+    return member
+  })
+
+export const setStaffRole = createServerFn({ method: 'POST' })
+  .validator(validateRole)
+  .handler(async ({ data }) => {
+    const staff = await requireStaff('admin')
+    const db = getDb()
+    const [target] = await db.select()
+      .from(schoolMemberships)
+      .where(and(
+        eq(schoolMemberships.id, data.membershipId),
+        eq(schoolMemberships.schoolId, staff.schoolId),
+      ))
+      .limit(1)
+    if (!target) throw new Error('The selected staff member is not part of your school.')
+    if (target.role === 'admin' && data.role !== 'admin') {
+      const admins = await db.select({ id: schoolMemberships.id })
+        .from(schoolMemberships)
+        .where(and(
+          eq(schoolMemberships.schoolId, staff.schoolId),
+          eq(schoolMemberships.role, 'admin'),
+        ))
+      if (admins.length <= 1) throw new Error('A school must retain at least one administrator.')
+    }
+    await db.update(schoolMemberships)
+      .set({ role: data.role })
+      .where(and(
+        eq(schoolMemberships.id, data.membershipId),
+        eq(schoolMemberships.schoolId, staff.schoolId),
+      ))
+    return { saved: true }
+  })
 
 export const assignTeacher = createServerFn({ method: 'POST' })
   .validator(validateAssignment)
   .handler(async ({ data }) => {
-    await requireStaff('admin')
-    const user = await admin.getUser(data.identityUserId)
-    if (!user.roles?.includes('teacher')) {
-      throw new Error('Only a Netlify Identity account with the teacher role can receive a teaching assignment.')
-    }
-    const [assignment] = await getDb()
-      .insert(staffAssignments)
-      .values(data)
-      .onConflictDoNothing({
-        target: [
-          staffAssignments.identityUserId,
-          staffAssignments.classId,
-          staffAssignments.subjectId,
-        ],
-      })
-      .returning()
+    const staff = await requireStaff('admin')
+    const db = getDb()
+    const [member] = await db.select({ id: schoolMemberships.id })
+      .from(schoolMemberships)
+      .where(and(
+        eq(schoolMemberships.identityUserId, data.identityUserId),
+        eq(schoolMemberships.schoolId, staff.schoolId),
+        eq(schoolMemberships.role, 'teacher'),
+      ))
+      .limit(1)
+    if (!member) throw new Error('Only a teacher belonging to your school can receive a teaching assignment.')
+
+    const [classSubject] = await db.select({ id: classSubjects.id })
+      .from(classSubjects)
+      .where(and(
+        eq(classSubjects.schoolId, staff.schoolId),
+        eq(classSubjects.classId, data.classId),
+        eq(classSubjects.subjectId, data.subjectId),
+      ))
+      .limit(1)
+    if (!classSubject) throw new Error('The subject is not registered for this class in your school.')
+
+    const [assignment] = await db.insert(staffAssignments).values({
+      schoolId: staff.schoolId,
+      ...data,
+    }).onConflictDoNothing({
+      target: [
+        staffAssignments.schoolId,
+        staffAssignments.identityUserId,
+        staffAssignments.classId,
+        staffAssignments.subjectId,
+      ],
+    }).returning()
     return assignment ?? null
   })
 
 export const getScoreSheet = createServerFn({ method: 'GET' })
   .validator(validateScoreSheet)
   .handler(async ({ data }) => {
-    const user = await requireStaff()
+    const staff = await requireStaff()
     const db = getDb()
-    const [term] = await db
-      .select({
-        academicYear: academicTerms.academicYear,
-        isPublished: academicTerms.isPublished,
-      })
-      .from(academicTerms)
-      .where(eq(academicTerms.id, data.termId))
-      .limit(1)
-    if (!term) throw new Error('The selected term does not exist.')
+    const [term] = await db.select({
+      academicYear: academicTerms.academicYear,
+      isPublished: academicTerms.isPublished,
+    }).from(academicTerms).where(and(
+      eq(academicTerms.id, data.termId),
+      eq(academicTerms.schoolId, staff.schoolId),
+    )).limit(1)
+    if (!term) throw new Error('The selected term does not belong to your school.')
     if (term.isPublished) throw new Error('Scores in this term have been published and are locked.')
 
-    if (!user.roles?.includes('admin')) {
-      const [assignment] = await db
-        .select({ id: staffAssignments.id })
+    if (staff.role !== 'admin') {
+      const [assignment] = await db.select({ id: staffAssignments.id })
         .from(staffAssignments)
         .where(and(
-          eq(staffAssignments.identityUserId, user.id),
+          eq(staffAssignments.identityUserId, staff.id),
+          eq(staffAssignments.schoolId, staff.schoolId),
           eq(staffAssignments.classId, data.classId),
           eq(staffAssignments.subjectId, data.subjectId),
         ))
@@ -331,25 +575,42 @@ export const getScoreSheet = createServerFn({ method: 'GET' })
       if (!assignment) throw new Error('You are not assigned to this class and subject.')
     }
 
-    return db
-      .select({
-        enrollmentId: studentEnrollments.id,
-        studentId: students.id,
-        admissionNumber: students.admissionNumber,
-        firstName: students.firstName,
-        lastName: students.lastName,
-        testScore: scoreEntries.testScore,
-        examScore: scoreEntries.examScore,
-      })
+    const [classSubject] = await db.select({ id: classSubjects.id })
+      .from(classSubjects)
+      .where(and(
+        eq(classSubjects.schoolId, staff.schoolId),
+        eq(classSubjects.classId, data.classId),
+        eq(classSubjects.subjectId, data.subjectId),
+      ))
+      .limit(1)
+    if (!classSubject) throw new Error('The selected subject is not configured for this class.')
+
+    return db.select({
+      enrollmentId: studentEnrollments.id,
+      studentId: students.id,
+      admissionNumber: students.admissionNumber,
+      firstName: students.firstName,
+      lastName: students.lastName,
+      testScore: scoreEntries.testScore,
+      examScore: scoreEntries.examScore,
+    })
       .from(studentSubjects)
-      .innerJoin(studentEnrollments, eq(studentEnrollments.id, studentSubjects.enrollmentId))
-      .innerJoin(students, eq(students.id, studentEnrollments.studentId))
+      .innerJoin(studentEnrollments, and(
+        eq(studentEnrollments.id, studentSubjects.enrollmentId),
+        eq(studentEnrollments.schoolId, staff.schoolId),
+      ))
+      .innerJoin(students, and(
+        eq(students.id, studentEnrollments.studentId),
+        eq(students.schoolId, staff.schoolId),
+      ))
       .leftJoin(scoreEntries, and(
         eq(scoreEntries.enrollmentId, studentEnrollments.id),
+        eq(scoreEntries.schoolId, staff.schoolId),
         eq(scoreEntries.subjectId, studentSubjects.subjectId),
         eq(scoreEntries.termId, data.termId),
       ))
       .where(and(
+        eq(studentSubjects.schoolId, staff.schoolId),
         eq(studentSubjects.subjectId, data.subjectId),
         eq(studentEnrollments.classId, data.classId),
         eq(studentEnrollments.academicYear, term.academicYear),
