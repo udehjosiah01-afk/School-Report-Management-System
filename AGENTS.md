@@ -14,6 +14,8 @@ Read `PLAN.md` before continuing implementation.
 - `src/styles.css`: sage and cream design system, responsive layouts, and print rules, including the junior report preview.
 - `netlify.toml` and `vite.config.ts`: deployment and TanStack Start integration.
 
+Treat every deployed database migration as immutable. Restore or reference the exact applied version from Git history; put schema changes in a new, sequentially numbered migration and never rewrite a deployed migration.
+
 Preserve the senior workbook's intentional term- and subject-specific grade/remark thresholds, competition ranking (1, 1, 3; no rank for scores at or below zero), third-term three-term subject averaging rounded to one decimal, and thirteen-subject aggregate divided by ten. Do not normalize thresholds, correct the divisor, or treat these rules as defects. Test and examination score limits are 40 and 60.
 
 The uploaded junior report template defines 17 subjects for JSS 1 and JSS 2. JSS 3 remains unconfigured for later setup. Do not invent junior grading, average, remark, or ranking formulas; ask for the approved rules before calculating those fields. Never reuse the template's sample-school identity as generic branding.
