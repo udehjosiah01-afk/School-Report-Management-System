@@ -67,9 +67,11 @@ function Login() {
   return <main className="auth-page">
     <a className="brand" href="/">classfolio<span className="brand-dot">.</span></a>
     <section className="auth-card">
-      <div className="eyebrow">STAFF WORKSPACE</div>
+      <div className="eyebrow">{inviteToken ? 'STAFF WORKSPACE' : 'SCHOOL WORKSPACE'}</div>
       <h1>{inviteToken ? 'Set your password.' : 'Welcome back.'}</h1>
-      <p>{inviteToken ? 'Choose a password to finish setting up your invited school account.' : 'Sign in with the school account invited by your administrator.'}</p>
+      <p>{inviteToken
+        ? 'Choose a password to finish setting up your invited school staff account.'
+        : 'Sign in to your school account, or register your school to create a new account.'}</p>
       <form onSubmit={submit} className="record-form">
         {!inviteToken && <label>Email address<input autoComplete="username" type="email" required value={email} onChange={event => setEmail(event.target.value)} /></label>}
         <label>{inviteToken ? 'New password' : 'Password'}<input autoComplete={inviteToken ? 'new-password' : 'current-password'} type="password" minLength={8} required value={password} onChange={event => setPassword(event.target.value)} /></label>
@@ -77,7 +79,7 @@ function Login() {
         {error && <p className="form-error" role="alert">{error}</p>}
         <button className="primary" type="submit" disabled={submitting}>{submitting ? 'Please wait…' : inviteToken ? 'Set password' : 'Sign in'}</button>
       </form>
-      <p className="auth-note">Staff accounts are invited by their school administrator. <a href="/signup">Register your school</a> to get started.</p>
+      <p className="auth-note">Teachers and other staff need to be added by their school administrator. <a href="/signup">New school? Create an account</a></p>
     </section>
   </main>
 }
