@@ -6,6 +6,11 @@ Read `PLAN.md` before continuing implementation. The completed milestone is the 
 - `src/data/fixtures.ts`: illustrative records, workbook subjects, classes, terms, and initial scores. This is the replacement point for future real records.
 - `src/data/workbook-calculations.ts`: workbook-derived score validation limits and term-specific grade, remark, average, and ranking helpers.
 - `src/data/workbook-calculations.test.ts`: regression tests for the intentional workbook calculation rules.
+- `src/data/schema.ts`: Drizzle schema for persistent school records.
+- `src/server/auth.ts`: Netlify Identity staff authorization helpers.
+- `src/server/school-actions.ts` and `src/server/score-actions.ts`: role-guarded server data operations.
+- `src/routes/login.tsx` and `src/routes/school-data.tsx`: invite-based staff sign-in and connected school records workspace.
+- `netlify/database/migrations/`: Netlify Database SQL migrations.
 - `src/routes/__root.tsx`: page metadata and document shell.
 - `src/styles.css`: sage and cream design system, responsive layouts, print rules, and reduced-motion support.
 - `netlify.toml` and `vite.config.ts`: deployment and TanStack Start integration.

@@ -11,6 +11,7 @@ import {
   getIdentityStaff,
   getSchoolSetup,
   getScoreSheet,
+  setStaffRole,
 } from '../server/school-actions'
 import { saveDraftScore } from '../server/score-actions'
 
@@ -38,8 +39,14 @@ function SchoolData() {
   const [student, setStudent] = useState({ admissionNumber: '', firstName: '', lastName: '', classId: '', subjectIds: [] as string[] })
   const [teacherAssignments, setTeacherAssignments] = useState({ identityUserId: '', classId: '', subjectId: '' })
   const [staffList, setStaffList] = useState<Awaited<ReturnType<typeof getIdentityStaff>>>([])
+  const [staffRole, setStaffRoleValue] = useState({ identityUserId: '', role: 'teacher' })
   const [sheetSelection, setSheetSelection] = useState({ classId: '', subjectId: '', termId: '' })
+  const [loadedSheetSelection, setLoadedSheetSelection] = useState<typeof sheetSelection | null>(null)
   const [scoreRows, setScoreRows] = useState<Awaited<ReturnType<typeof getScoreSheet>>>([])
+  const scoreSheetIsCurrent = loadedSheetSelection !== null &&
+    loadedSheetSelection.classId === sheetSelection.classId &&
+    loadedSheetSelection.subjectId === sheetSelection.subjectId &&
+    loadedSheetSelection.termId === sheetSelection.termId
 
   useEffect(() => {
     if (!student.classId && setup.classes[0]) setStudent(current => ({ ...current, classId: setup.classes[0].id }))
@@ -72,8 +79,12 @@ function SchoolData() {
   async function loadScores() {
     setNotice('')
     setError('')
+    setLoadedSheetSelection(null)
     try {
-      setScoreRows(await getScoreSheet({ data: sheetSelection }))
+      const selected = { ...sheetSelection }
+      const rows = await getScoreSheet({ data: selected })
+      setScoreRows(rows)
+      setLoadedSheetSelection(selected)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'The score sheet could not be loaded.')
     }
@@ -158,7 +169,16 @@ function SchoolData() {
       </section>}
 
       {isAdmin && <section className="records-section">
-        <div className="section-heading"><div><h2>Assign a teacher</h2><p>Teachers can enter scores only for their assigned classes and subjects.</p></div><button className="secondary" onClick={() => void loadStaff()}>Load staff accounts</button></div>
+        <div className="section-heading"><div><h2>Staff accounts and assignments</h2><p>Invite accounts in Netlify Identity first. Assign each account a staff role here, then choose the classes and subjects teachers may edit.</p></div><button className="secondary" onClick={() => void loadStaff()}>Load staff accounts</button></div>
+        <form className="record-form enrollment-form" onSubmit={event => {
+          event.preventDefault()
+          void run(() => setStaffRole({ data: staffRole }), 'Staff role saved. Sign in again for the new role to take effect.')
+        }}>
+          <label>Identity account<select required value={staffRole.identityUserId} onChange={event => setStaffRoleValue({ ...staffRole, identityUserId: event.target.value })}><option value="">Select account</option>{staffList.map(item => <option key={item.id} value={item.id}>{item.email || item.id} · {item.roles.join(', ') || 'no role'}</option>)}</select></label>
+          <label>Role<select value={staffRole.role} onChange={event => setStaffRoleValue({ ...staffRole, role: event.target.value })}><option value="teacher">Teacher</option><option value="admin">Administrator</option></select></label>
+          <button className="primary" type="submit" disabled={!staffRole.identityUserId}>Save role</button>
+        </form>
+        <h3>Assign a teacher</h3>
         <form className="record-form enrollment-form" onSubmit={event => {
           event.preventDefault()
           void run(() => assignTeacher({ data: teacherAssignments }), 'Teacher assignment saved.')
@@ -173,22 +193,24 @@ function SchoolData() {
       <section className="records-section">
         <h2>Enter draft scores</h2>
         <div className="score-selection">
-          <label>Class<select value={sheetSelection.classId} onChange={event => setSheetSelection({ ...sheetSelection, classId: event.target.value })}><option value="">Select class</option>{setup.classes.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-          <label>Subject<select value={sheetSelection.subjectId} onChange={event => setSheetSelection({ ...sheetSelection, subjectId: event.target.value })}><option value="">Select subject</option>{setup.subjects.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-          <label>Term<select value={sheetSelection.termId} onChange={event => setSheetSelection({ ...sheetSelection, termId: event.target.value })}><option value="">Select term</option>{setup.terms.map(item => <option key={item.id} value={item.id}>{item.academicYear} · {item.name}</option>)}</select></label>
+          <label>Class<select value={sheetSelection.classId} onChange={event => { setLoadedSheetSelection(null); setScoreRows([]); setSheetSelection({ ...sheetSelection, classId: event.target.value }) }}><option value="">Select class</option>{setup.classes.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+          <label>Subject<select value={sheetSelection.subjectId} onChange={event => { setLoadedSheetSelection(null); setScoreRows([]); setSheetSelection({ ...sheetSelection, subjectId: event.target.value }) }}><option value="">Select subject</option>{setup.subjects.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+          <label>Term<select value={sheetSelection.termId} onChange={event => { setLoadedSheetSelection(null); setScoreRows([]); setSheetSelection({ ...sheetSelection, termId: event.target.value }) }}><option value="">Select term</option>{setup.terms.map(item => <option key={item.id} value={item.id}>{item.academicYear} · {item.name}</option>)}</select></label>
           <button className="primary" onClick={() => void loadScores()} disabled={!sheetSelection.classId || !sheetSelection.subjectId || !sheetSelection.termId}>Load score sheet</button>
         </div>
-        {scoreRows.length > 0 && <div className="records-table-wrap"><table className="records-table">
+        {scoreSheetIsCurrent && scoreRows.length > 0 && <div className="records-table-wrap"><table className="records-table">
           <thead><tr><th>Student</th><th>Admission no.</th><th>Test / 40</th><th>Examination / 60</th><th></th></tr></thead>
           <tbody>{scoreRows.map(row => <tr key={row.enrollmentId}>
             <td>{row.firstName} {row.lastName}</td>
             <td>{row.admissionNumber}</td>
             <td><input aria-label={`Test score for ${row.firstName} ${row.lastName}`} type="number" min="0" max="40" step="1" value={row.testScore ?? ''} onChange={event => setScoreRows(rows => rows.map(item => item.enrollmentId === row.enrollmentId ? { ...item, testScore: event.target.value === '' ? null : Number(event.target.value) } : item))} /></td>
             <td><input aria-label={`Examination score for ${row.firstName} ${row.lastName}`} type="number" min="0" max="60" step="1" value={row.examScore ?? ''} onChange={event => setScoreRows(rows => rows.map(item => item.enrollmentId === row.enrollmentId ? { ...item, examScore: event.target.value === '' ? null : Number(event.target.value) } : item))} /></td>
-            <td><button className="secondary" onClick={() => void run(() => saveDraftScore({ data: { enrollmentId: row.enrollmentId, subjectId: sheetSelection.subjectId, termId: sheetSelection.termId, testScore: row.testScore, examScore: row.examScore } }), `Draft saved for ${row.firstName} ${row.lastName}.`)}>Save draft</button></td>
+            <td><button className="secondary" onClick={() => void run(() => saveDraftScore({ data: { enrollmentId: row.enrollmentId, subjectId: loadedSheetSelection.subjectId, termId: loadedSheetSelection.termId, testScore: row.testScore, examScore: row.examScore } }), `Draft saved for ${row.firstName} ${row.lastName}.`)}>Save draft</button></td>
           </tr>)}</tbody>
         </table></div>}
-        {scoreRows.length === 0 && <p className="records-empty">Load an assigned class, subject, and term to enter draft scores. Empty scores remain blank; this screen does not calculate report results.</p>}
+        {scoreSheetIsCurrent && scoreRows.length === 0
+          ? <p className="records-empty">No students are registered for the selected class, subject, and academic term.</p>
+          : !scoreSheetIsCurrent && <p className="records-empty">Load an assigned class, subject, and term to enter draft scores. Empty scores remain blank; this screen does not calculate report results.</p>}
       </section>
 
       <section className="records-section">

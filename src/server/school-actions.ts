@@ -1,7 +1,7 @@
-import { admin } from '@netlify/identity'
+import { admin, getUser } from '@netlify/identity'
 import { and, asc, eq } from 'drizzle-orm'
 import { createServerFn } from '@tanstack/react-start'
-import { academicTerms, schoolClasses, scoreEntries, staffAssignments, studentEnrollments, studentSubjects, students, subjects } from '../data/schema'
+import { academicTerms, schoolClasses, scoreEntries, staffAssignments, studentEnrollments, studentSubjects, students, subjects, systemSettings } from '../data/schema'
 import { requireStaff } from './auth'
 import { getDb } from './database'
 import { isUuid } from '../data/score-validation'
@@ -78,6 +78,56 @@ function validateAssignment(value: unknown) {
   }
 }
 
+export const bootstrapInitialAdministrator = createServerFn({ method: 'POST' }).handler(async () => {
+  const user = await getUser()
+  if (!user?.email) {
+    throw new Error('Sign in with the invited initial administrator account before starting setup.')
+  }
+
+  const expectedEmail = process.env.CLASSFOLIO_INITIAL_ADMIN_EMAIL?.trim().toLowerCase()
+  if (!expectedEmail) {
+    throw new Error('Initial administrator setup is not enabled. Configure CLASSFOLIO_INITIAL_ADMIN_EMAIL for the invited account.')
+  }
+  if (user.email.toLowerCase() !== expectedEmail) {
+    throw new Error('This signed-in account is not the configured initial administrator.')
+  }
+
+  let page = 1
+  while (true) {
+    const users = await admin.listUsers({ page, perPage: 100 })
+    if (users.some(candidate => candidate.roles?.includes('admin'))) {
+      throw new Error('An administrator is already set up. Ask them to assign your staff role.')
+    }
+    if (users.length < 100) break
+    page += 1
+  }
+
+  const db = getDb()
+  return db.transaction(async tx => {
+    const [claim] = await tx
+      .insert(systemSettings)
+      .values({
+        key: 'initial_administrator',
+        value: { identityUserId: user.id },
+        updatedBy: user.id,
+      })
+      .onConflictDoNothing()
+      .returning({ key: systemSettings.key })
+
+    if (!claim) {
+      throw new Error('Initial administrator setup has already been completed.')
+    }
+
+    await admin.updateUser(user.id, {
+      app_metadata: {
+        ...(user.appMetadata ?? {}),
+        roles: ['admin'],
+      },
+    })
+    return { email: user.email }
+  })
+})
+
 export const getSchoolSetup = createServerFn({ method: 'GET' }).handler(async () => {
   const user = await requireStaff()
   const db = getDb()
@@ -108,7 +158,7 @@ export const getSchoolSetup = createServerFn({ method: 'GET' }).handler(async ()
     .select()
     .from(academicTerms)
     .orderBy(asc(academicTerms.academicYear), asc(academicTerms.name))
-  const enrollmentQuery = db.select({
+  const enrollmentQuery = db.selectDistinct({
       id: studentEnrollments.id,
       studentId: students.id,
       admissionNumber: students.admissionNumber,
@@ -163,20 +213,27 @@ export const createStudent = createServerFn({ method: 'POST' })
     await requireStaff('admin')
     const db = getDb()
     return db.transaction(async tx => {
-      const [student] = await tx
-        .insert(students)
-        .values({
-          admissionNumber: data.admissionNumber,
-          firstName: data.firstName,
-          lastName: data.lastName,
-        })
-        .returning()
-      if (!student) throw new Error('The student record could not be created.')
+      const [existingStudent] = await tx
+        .select({ id: students.id })
+        .from(students)
+        .where(eq(students.admissionNumber, data.admissionNumber))
+        .limit(1)
+      const [createdStudent] = existingStudent
+        ? [existingStudent]
+        : await tx
+            .insert(students)
+            .values({
+              admissionNumber: data.admissionNumber,
+              firstName: data.firstName,
+              lastName: data.lastName,
+            })
+            .returning({ id: students.id })
+      if (!createdStudent) throw new Error('The student record could not be created.')
 
       const [enrollment] = await tx
         .insert(studentEnrollments)
         .values({
-          studentId: student.id,
+          studentId: createdStudent.id,
           classId: data.classId,
           academicYear: data.academicYear,
         })
@@ -194,9 +251,33 @@ export const createStudent = createServerFn({ method: 'POST' })
 export const getIdentityStaff = createServerFn({ method: 'GET' }).handler(async () => {
   await requireStaff('admin')
   const users = await admin.listUsers({ perPage: 100 })
-  return users
-    .filter(user => user.roles?.some(role => role === 'admin' || role === 'teacher'))
-    .map(user => ({ id: user.id, email: user.email ?? '', roles: user.roles ?? [] }))
+  return users.map(user => ({
+    id: user.id,
+    email: user.email ?? '',
+    roles: user.roles ?? [],
+  }))
+})
+
+export const setStaffRole = createServerFn({ method: 'POST' })
+  .validator((value: unknown) => {
+    const input = value as Record<string, unknown> | null
+    const identityUserId = requiredText(input?.identityUserId, 'Staff account ID', 120)
+    const role = requiredText(input?.role, 'Staff role', 20)
+    if (role !== 'admin' && role !== 'teacher') {
+      throw new Error('Select administrator or teacher.')
+    }
+    return { identityUserId, role }
+  })
+  .handler(async ({ data }) => {
+    await requireStaff('admin')
+    const user = await admin.getUser(data.identityUserId)
+    const updated = await admin.updateUser(user.id, {
+      app_metadata: {
+        ...(user.appMetadata ?? {}),
+        roles: [data.role],
+      },
+    })
+    return { id: updated.id, email: updated.email ?? '', roles: updated.roles ?? [] }
 })
 
 export const assignTeacher = createServerFn({ method: 'POST' })
