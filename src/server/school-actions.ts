@@ -1,11 +1,17 @@
 import { createServerFn } from '@tanstack/react-start'
 import { juniorSubjects, schoolClassNames, seniorSubjects } from '../data/curriculum'
 import { isUuid } from '../data/score-validation'
+import {
+  DEFAULT_ACCENT_COLOR,
+  DEFAULT_MAIN_COLOR,
+  validateSchoolColor,
+  validateSchoolLogoDataUrl,
+} from '../data/school-branding'
 
 async function loadServerDependencies() {
   const [identity, drizzle, schema, auth, database] = await Promise.all([
     import('@netlify/identity'),
-    import('drizzle-orm'),
+    import('drizzle-orm').then(module => module),
     import('../data/schema'),
     import('./auth.server'),
     import('./database'),
@@ -44,6 +50,9 @@ function validateSchool(value: unknown) {
     phone: requiredText(input.phone, 'School phone number', 40),
     contactEmail,
     motto: typeof input.motto === 'string' ? input.motto.trim().slice(0, 160) : '',
+    logoUrl: validateSchoolLogoDataUrl(input.logoUrl),
+    mainColor: validateSchoolColor(input.mainColor, 'Main colour', DEFAULT_MAIN_COLOR),
+    accentColor: validateSchoolColor(input.accentColor, 'Accent colour', DEFAULT_ACCENT_COLOR),
   }
 }
 
@@ -181,6 +190,9 @@ export const registerSchool = createServerFn({ method: 'POST' })
           phone: school.phone,
           contactEmail: school.contactEmail,
           motto: school.motto,
+          logoUrl: school.logoUrl,
+          mainColor: school.mainColor,
+          accentColor: school.accentColor,
         },
         membershipId: membership.id,
       }
@@ -191,6 +203,7 @@ export const getSchoolSetup = createServerFn({ method: 'GET' }).handler(async ()
   const {
     requireStaff, getDb, schools, eq, schoolClasses, asc, staffAssignments, and,
     subjects, classSubjects, academicTerms, studentEnrollments, students,
+    studentSubjects, scoreEntries, count, isNotNull,
   } = await loadServerDependencies()
   const staff = await requireStaff()
   const db = getDb()
@@ -203,6 +216,8 @@ export const getSchoolSetup = createServerFn({ method: 'GET' }).handler(async ()
     contactEmail: schools.contactEmail,
     motto: schools.motto,
     logoUrl: schools.logoUrl,
+    mainColor: schools.mainColor,
+    accentColor: schools.accentColor,
   }).from(schools).where(eq(schools.id, staff.schoolId)).limit(1)
   const classRows = isAdmin
     ? await db.select().from(schoolClasses).where(eq(schoolClasses.schoolId, staff.schoolId)).orderBy(asc(schoolClasses.name))
@@ -279,6 +294,52 @@ export const getSchoolSetup = createServerFn({ method: 'GET' }).handler(async ()
           eq(staffAssignments.identityUserId, staff.id),
         ))
         .orderBy(asc(studentEnrollments.academicYear), asc(schoolClasses.name), asc(students.lastName))
+  const [expectedScoreRows, completeScoreRows] = isAdmin
+    ? await Promise.all([
+        db.select({
+          classId: studentEnrollments.classId,
+          academicYear: studentEnrollments.academicYear,
+          expectedCount: count(),
+        })
+          .from(studentSubjects)
+          .innerJoin(studentEnrollments, and(
+            eq(studentEnrollments.id, studentSubjects.enrollmentId),
+            eq(studentEnrollments.schoolId, staff.schoolId),
+          ))
+          .where(eq(studentSubjects.schoolId, staff.schoolId))
+          .groupBy(studentEnrollments.classId, studentEnrollments.academicYear),
+        db.select({
+          classId: studentEnrollments.classId,
+          termId: scoreEntries.termId,
+          academicYear: studentEnrollments.academicYear,
+          completeCount: count(),
+        })
+          .from(scoreEntries)
+          .innerJoin(studentEnrollments, and(
+            eq(studentEnrollments.id, scoreEntries.enrollmentId),
+            eq(studentEnrollments.schoolId, staff.schoolId),
+          ))
+          .innerJoin(academicTerms, and(
+            eq(academicTerms.id, scoreEntries.termId),
+            eq(academicTerms.schoolId, staff.schoolId),
+            eq(academicTerms.academicYear, studentEnrollments.academicYear),
+          ))
+          .where(and(
+            eq(scoreEntries.schoolId, staff.schoolId),
+            isNotNull(scoreEntries.testScore),
+            isNotNull(scoreEntries.examScore),
+          ))
+          .groupBy(studentEnrollments.classId, scoreEntries.termId, studentEnrollments.academicYear),
+      ])
+    : [[], []]
+  const scoreCoverage = termRows.flatMap(term => expectedScoreRows
+    .filter(row => row.expectedCount > 0 && row.academicYear === term.academicYear && classRows.some(schoolClass => schoolClass.id === row.classId))
+    .map(row => ({
+      classId: row.classId,
+      termId: term.id,
+      expectedCount: row.expectedCount,
+      completeCount: completeScoreRows.find(score => score.classId === row.classId && score.termId === term.id && score.academicYear === term.academicYear)?.completeCount ?? 0,
+    })))
   return {
     school: (await schoolQuery)[0] ?? null,
     classes: classRows,
@@ -286,8 +347,33 @@ export const getSchoolSetup = createServerFn({ method: 'GET' }).handler(async ()
     classSubjects: classSubjectRows,
     terms: termRows,
     enrollments: enrollmentRows,
+    scoreCoverage,
   }
 })
+
+export const updateSchoolBranding = createServerFn({ method: 'POST' })
+  .validator(validateSchool)
+  .handler(async ({ data }) => {
+    const { requireStaff, getDb, schools, eq } = await loadServerDependencies()
+    const staff = await requireStaff('admin')
+    const [school] = await getDb()
+      .update(schools)
+      .set(data)
+      .where(eq(schools.id, staff.schoolId))
+      .returning({
+        id: schools.id,
+        name: schools.name,
+        address: schools.address,
+        phone: schools.phone,
+        contactEmail: schools.contactEmail,
+        motto: schools.motto,
+        logoUrl: schools.logoUrl,
+        mainColor: schools.mainColor,
+        accentColor: schools.accentColor,
+      })
+    if (!school) throw new Error('The school profile could not be updated.')
+    return school
+  })
 
 export const createSchoolClass = createServerFn({ method: 'POST' })
   .validator(validateName)

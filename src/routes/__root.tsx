@@ -2,6 +2,7 @@ import { HeadContent, Scripts, createRootRoute } from '@tanstack/react-router'
 
 
 import '../styles.css'
+import '../official-theme.css'
 
 const siteName = 'Classfolio — School Results'
 const siteDescription = 'A school-specific workspace for organising classes, school records and term results.'

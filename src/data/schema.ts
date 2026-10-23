@@ -19,6 +19,8 @@ export const schools = pgTable('schools', {
   contactEmail: text('contact_email').notNull(),
   motto: text('motto').notNull().default(''),
   logoUrl: text('logo_url'),
+  mainColor: text('main_color').notNull().default('#c62828'),
+  accentColor: text('accent_color').notNull().default('#38bdf8'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 })
 

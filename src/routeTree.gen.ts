@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as SchoolDataRouteImport } from './routes/school-data'
 import { Route as SchoolSetupRouteImport } from './routes/school-setup'
+import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as WorkspaceRouteImport } from './routes/workspace'
 
@@ -36,6 +37,11 @@ const SchoolSetupRoute = SchoolSetupRouteImport.update({
   path: '/school-setup',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SettingsRoute = SettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
   path: '/signup',
@@ -52,6 +58,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/school-data': typeof SchoolDataRoute
   '/school-setup': typeof SchoolSetupRoute
+  '/settings': typeof SettingsRoute
   '/signup': typeof SignupRoute
   '/workspace': typeof WorkspaceRoute
 }
@@ -60,6 +67,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/school-data': typeof SchoolDataRoute
   '/school-setup': typeof SchoolSetupRoute
+  '/settings': typeof SettingsRoute
   '/signup': typeof SignupRoute
   '/workspace': typeof WorkspaceRoute
 }
@@ -69,22 +77,36 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/school-data': typeof SchoolDataRoute
   '/school-setup': typeof SchoolSetupRoute
+  '/settings': typeof SettingsRoute
   '/signup': typeof SignupRoute
   '/workspace': typeof WorkspaceRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    '/' | '/login' | '/school-data' | '/school-setup' | '/signup' | '/workspace'
+    | '/'
+    | '/login'
+    | '/school-data'
+    | '/school-setup'
+    | '/settings'
+    | '/signup'
+    | '/workspace'
   fileRoutesByTo: FileRoutesByTo
   to:
-    '/' | '/login' | '/school-data' | '/school-setup' | '/signup' | '/workspace'
+    | '/'
+    | '/login'
+    | '/school-data'
+    | '/school-setup'
+    | '/settings'
+    | '/signup'
+    | '/workspace'
   id:
     | '__root__'
     | '/'
     | '/login'
     | '/school-data'
     | '/school-setup'
+    | '/settings'
     | '/signup'
     | '/workspace'
   fileRoutesById: FileRoutesById
@@ -94,6 +116,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   SchoolDataRoute: typeof SchoolDataRoute
   SchoolSetupRoute: typeof SchoolSetupRoute
+  SettingsRoute: typeof SettingsRoute
   SignupRoute: typeof SignupRoute
   WorkspaceRoute: typeof WorkspaceRoute
 }
@@ -128,6 +151,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SchoolSetupRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/signup': {
       id: '/signup'
       path: '/signup'
@@ -150,6 +180,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   SchoolDataRoute: SchoolDataRoute,
   SchoolSetupRoute: SchoolSetupRoute,
+  SettingsRoute: SettingsRoute,
   SignupRoute: SignupRoute,
   WorkspaceRoute: WorkspaceRoute,
 }

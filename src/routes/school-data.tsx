@@ -1,7 +1,13 @@
 import { logout } from '@netlify/identity'
 import { createFileRoute, redirect, useRouter } from '@tanstack/react-router'
+import { Printer } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { getCurrentStaff } from '../server/auth'
+import { JuniorReportTemplate } from '../components/junior-report-template'
+import { getReportTemplateId } from '../data/report-templates'
+import { isResultTerm } from '../data/workbook-calculations'
+import type { ResultTerm } from '../data/workbook-calculations'
+import { schoolThemeStyle } from '../data/school-branding'
 import {
   assignTeacher,
   addSchoolStaff,
@@ -32,12 +38,17 @@ function SchoolData() {
   const setup = Route.useLoaderData()
   const router = useRouter()
   const isAdmin = staff.roles.includes('admin')
+  const [showReportPreview, setShowReportPreview] = useState(false)
+  const [reportClassName, setReportClassName] = useState(() => setup.classes.find(item => item.name === 'JSS 1')?.name ?? setup.classes[0]?.name ?? '')
+  const [reportTerm, setReportTerm] = useState<ResultTerm>('Third Term')
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
   const [className, setClassName] = useState('')
   const [subjectName, setSubjectName] = useState('')
   const [academicYear, setAcademicYear] = useState('')
   const [termName, setTermName] = useState('First Term')
+  const [subjectToAdd, setSubjectToAdd] = useState('')
+  const [coverageTermId, setCoverageTermId] = useState(() => setup.terms.at(-1)?.id ?? '')
   const [student, setStudent] = useState({ admissionNumber: '', firstName: '', lastName: '', classId: '', subjectIds: [] as string[] })
   const [teacherAssignments, setTeacherAssignments] = useState({ identityUserId: '', classId: '', subjectId: '' })
   const [staffEmail, setStaffEmail] = useState('')
@@ -51,6 +62,15 @@ function SchoolData() {
     loadedSheetSelection.classId === sheetSelection.classId &&
     loadedSheetSelection.subjectId === sheetSelection.subjectId &&
     loadedSheetSelection.termId === sheetSelection.termId
+  const reportTemplateId = getReportTemplateId(reportClassName, reportTerm)
+  const termScoreCoverage = setup.scoreCoverage.filter(item => item.termId === coverageTermId)
+  const classesMissingScores = termScoreCoverage
+    .map(item => ({
+      ...item,
+      className: setup.classes.find(schoolClass => schoolClass.id === item.classId)?.name ?? 'Class',
+      missingCount: Math.max(0, item.expectedCount - item.completeCount),
+    }))
+    .filter(item => item.missingCount > 0)
 
   useEffect(() => {
     if (!student.classId && setup.classes[0]) {
@@ -119,10 +139,15 @@ function SchoolData() {
     window.location.assign('/login')
   }
 
-  return <main className="records-page">
+  return <main className="records-page" style={schoolThemeStyle(setup.school?.mainColor, setup.school?.accentColor)}>
     <header className="records-header">
-      <a className="brand" href="/">classfolio<span className="brand-dot">.</span></a>
-      <div><span>{staff.name || staff.email}</span><button className="secondary" onClick={signOut}>Sign out</button></div>
+      <a className="records-school-brand" href="/school-data">
+        {setup.school?.logoUrl
+          ? <img src={setup.school.logoUrl} alt=""/>
+          : <span className="records-school-seal"><span>{setup.school?.name?.slice(0, 1) || 'S'}</span></span>}
+        <span><strong>{setup.school?.name ?? 'School workspace'}</strong><small>School administration <i>·</i> Classfolio</small></span>
+      </a>
+      <div><span>{staff.name || staff.email}</span><a className="secondary" href="/settings">Settings</a><button className="secondary" onClick={signOut}>Sign out</button></div>
     </header>
     <div className="records-content">
       <div className="eyebrow">CONNECTED SCHOOL WORKSPACE</div>
@@ -132,9 +157,75 @@ function SchoolData() {
       {notice && <p className="form-notice" role="status">{notice}</p>}
       {error && <p className="form-error" role="alert">{error}</p>}
 
+      <section className="school-dashboard" aria-label="School activity overview">
+        <article className="school-dashboard-card">
+          <span>Enrolled students</span>
+          <strong>{setup.enrollments.length}</strong>
+          <small>Current school records</small>
+        </article>
+        <article className="school-dashboard-card">
+          <span>{isAdmin ? 'Classes needing scores' : 'Score overview'}</span>
+          {isAdmin && setup.terms.length > 0 && <label className="dashboard-term-select">Term<select aria-label="Score status term" value={coverageTermId} onChange={event => setCoverageTermId(event.target.value)}>
+            {setup.terms.map(item => <option key={item.id} value={item.id}>{item.academicYear} · {item.name}</option>)}
+          </select></label>}
+          <strong>{isAdmin && termScoreCoverage.length ? classesMissingScores.length : '—'}</strong>
+          <small>{!isAdmin
+            ? 'Score progress is not included in the staff overview.'
+            : termScoreCoverage.length
+              ? 'Based on registered subjects and complete draft entries'
+              : 'No eligible student-subject records for this term'}</small>
+        </article>
+        <article className="school-dashboard-card dashboard-reports-card">
+          <span>Reports ready to print</span>
+          <strong>—</strong>
+          <small>No generated reports are stored yet. Blank templates are previews only.</small>
+        </article>
+        <div className="school-dashboard-detail">
+          <h2>Classes with missing scores</h2>
+          {classesMissingScores.length
+            ? <ul>{classesMissingScores.map(item => <li key={item.classId}>
+                <strong>{item.className}</strong>
+                <span>{item.missingCount} of {item.expectedCount} subject scores need completion</span>
+              </li>)}</ul>
+            : <p>{!isAdmin
+              ? 'Score completion overview is available to school administrators.'
+              : termScoreCoverage.length
+                ? 'All registered subject scores are complete for this term.'
+                : 'No score completion data is available for the selected term yet.'}</p>}
+        </div>
+      </section>
+
+      {isAdmin && setup.school && <section className="records-section school-settings-link">
+        <div><h2>School settings</h2><p>Update your school identity, logo, and colours used on printed reports.</p></div>
+        <a className="primary" href="/settings">Open settings</a>
+      </section>}
+
+      <section className="records-section report-preview-section">
+        <div className="section-heading">
+          <div><h2>School report template</h2><p>The report design uses this school’s saved name, address, and logo.</p></div>
+          <div className="report-preview-actions">
+            {showReportPreview && <>
+              <label>Class<select value={reportClassName} onChange={event => setReportClassName(event.target.value)}>
+                {setup.classes.map(item => <option key={item.id} value={item.name}>{item.name}</option>)}
+              </select></label>
+              <label>Term<select value={reportTerm} onChange={event => {
+                if (isResultTerm(event.target.value)) setReportTerm(event.target.value)
+              }}>
+                <option>First Term</option><option>Second Term</option><option>Third Term</option>
+              </select></label>
+            </>}
+            <button className="secondary" type="button" onClick={() => setShowReportPreview(value => !value)}>{showReportPreview ? 'Hide preview' : 'Preview report'}</button>
+            {showReportPreview && reportTemplateId && <button className="primary" type="button" onClick={() => window.print()}><Printer size={16}/> Print template</button>}
+          </div>
+        </div>
+        {showReportPreview && (reportTemplateId
+          ? <JuniorReportTemplate school={setup.school} className={reportClassName} term={reportTerm}/>
+          : <p className="report-template-unavailable">A report template for {reportClassName} has not been uploaded yet. The matching JSS 3 or SS design can be added when available.</p>)}
+      </section>
+
       {isAdmin && <section className="records-section">
         <h2>Classes, subjects, and terms</h2>
-        <p>JSS 1 and JSS 2 start with the 17 subjects in your uploaded report template. Configure JSS 3 when you provide its list. Set each class’s subjects before enrolling its students.</p>
+        <p>Each class has its own subject list. Start with the school catalogue, add subjects for different curricula, and configure each class before enrolling students.</p>
         <div className="records-grid">
           <form className="record-form" onSubmit={event => {
             event.preventDefault()
@@ -150,9 +241,10 @@ function SchoolData() {
             void run(() => createSubject({ data: { name: subjectName } }), 'Subject saved.')
               .then(saved => { if (saved) setSubjectName('') })
           }}>
-            <h3>Add a subject</h3>
+            <h3>Add to the school subject catalogue</h3>
+            <p>Add a curriculum subject that is not already listed. You can then select it for any class.</p>
             <label>Subject name<input required maxLength={120} value={subjectName} onChange={event => setSubjectName(event.target.value)} placeholder="Subject name" /></label>
-            <button className="primary" type="submit">Save subject</button>
+            <button className="primary" type="submit">Add subject</button>
           </form>
           <form className="record-form" onSubmit={event => {
             event.preventDefault()
@@ -168,16 +260,47 @@ function SchoolData() {
           event.preventDefault()
           void run(() => saveClassSubjects({ data: classSubjectSelection }), 'Class subject list saved.')
         }}>
-          <h3>Configure subjects for a class</h3>
+          <h3>Choose subjects for each class</h3>
+          <p>Choose a class, then build its curriculum from the school subject catalogue. Changes are saved for that class only and must be configured before students are enrolled.</p>
           <label>Class<select required value={classSubjectSelection.classId} onChange={event => {
             const classId = event.target.value
+            setSubjectToAdd('')
             setClassSubjectSelection({
               classId,
               subjectIds: setup.classSubjects.filter(item => item.classId === classId).map(item => item.subjectId),
             })
-          }}><option value="">Select class</option>{setup.classes.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-          <fieldset className="subject-registration"><legend>Subjects on this class’s report card</legend>{setup.subjects.map(item => <label key={item.id}><input type="checkbox" checked={classSubjectSelection.subjectIds.includes(item.id)} onChange={event => setClassSubjectSelection(current => ({ ...current, subjectIds: event.target.checked ? [...current.subjectIds, item.id] : current.subjectIds.filter(id => id !== item.id) }))} />{item.name}</label>)}</fieldset>
-          <button className="primary" type="submit" disabled={!classSubjectSelection.classId}>Save class subjects</button>
+          }}><option value="">Select class</option>
+            <optgroup label="Junior secondary">{setup.classes.filter(item => item.name.startsWith('JSS ')).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</optgroup>
+            <optgroup label="Senior secondary">{setup.classes.filter(item => item.name.startsWith('SS ')).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</optgroup>
+            <optgroup label="Other classes">{setup.classes.filter(item => !item.name.startsWith('JSS ') && !item.name.startsWith('SS ')).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</optgroup>
+          </select></label>
+          <div className="class-subject-add">
+            <label>Choose a subject from the catalogue<select value={subjectToAdd} onChange={event => setSubjectToAdd(event.target.value)} disabled={!classSubjectSelection.classId}>
+              <option value="">Select a subject</option>
+              {setup.subjects.map(item => <option key={item.id} value={item.id} disabled={classSubjectSelection.subjectIds.includes(item.id)}>
+                {item.name}{classSubjectSelection.subjectIds.includes(item.id) ? ' (already selected)' : ''}
+              </option>)}
+            </select></label>
+            <button className="secondary" type="button" disabled={!subjectToAdd || !classSubjectSelection.classId} onClick={() => {
+              setClassSubjectSelection(current => current.subjectIds.includes(subjectToAdd)
+                ? current
+                : { ...current, subjectIds: [...current.subjectIds, subjectToAdd] })
+              setSubjectToAdd('')
+            }}>Add to class</button>
+          </div>
+          <div className="class-subject-list" aria-live="polite">
+            <strong>Subjects selected for {setup.classes.find(item => item.id === classSubjectSelection.classId)?.name ?? 'this class'} ({classSubjectSelection.subjectIds.length})</strong>
+            {classSubjectSelection.subjectIds.length
+              ? <ul>{classSubjectSelection.subjectIds.map(subjectId => {
+                  const subject = setup.subjects.find(item => item.id === subjectId)
+                  return subject && <li key={subjectId}><span>{subject.name}</span><button className="text-button" type="button" aria-label={`Remove ${subject.name} from this class`} onClick={() => setClassSubjectSelection(current => ({
+                    ...current,
+                    subjectIds: current.subjectIds.filter(id => id !== subjectId),
+                  }))}>Remove</button></li>
+                })}</ul>
+              : <p>No subjects selected. Choose subjects from the catalogue above.</p>}
+          </div>
+          <button className="primary" type="submit" disabled={!classSubjectSelection.classId}>Save class curriculum</button>
         </form>
       </section>}
 

@@ -1,5 +1,16 @@
 import { juniorSubjects } from '../data/curriculum'
+import type { ResultTerm } from '../data/workbook-calculations'
 import '../report-template.css'
+import { BookOpen } from 'lucide-react'
+
+export type ReportSchoolBranding = {
+  name: string
+  address: string
+  phone?: string
+  contactEmail?: string
+  motto?: string
+  logoUrl?: string | null
+}
 
 const gradeScale = [
   ['DISTINCTION', 'A'],
@@ -28,22 +39,45 @@ const psychomotorSkills = [
   'Musical Skills',
 ]
 
-function BlankField({ label, className = '' }: { label: string; className?: string }) {
-  return <div className={`jss-field ${className}`}><span>{label}</span><i aria-hidden="true"/></div>
+function BlankField({ label, className = '', value }: { label: string; className?: string; value?: string }) {
+  return <div className={`jss-field ${className}`}><span>{label}</span>{value ? <strong>{value}</strong> : <i aria-hidden="true"/>}</div>
 }
 
-export function JuniorReportTemplate() {
+function ReportTotals() {
+  return <section className="jss-report-totals" aria-label="Report totals">
+    <BlankField label="TOTAL MARKS OBTAINED"/>
+    <BlankField label="TOTAL MARKS OBTAINABLE"/>
+    <BlankField label="AVERAGE"/>
+    <BlankField label="GRADE"/>
+  </section>
+}
+
+export function JuniorReportTemplate({
+  school,
+  className = 'JSS 1',
+  term = 'Third Term',
+}: {
+  school?: ReportSchoolBranding | null
+  className?: string
+  term?: ResultTerm
+} = {}) {
+  const schoolName = school?.name || 'YOUR SCHOOL NAME'
+  const schoolAddress = school?.address || 'SCHOOL ADDRESS'
+  const isThirdTerm = term === 'Third Term'
   return <section className="jss-report-preview">
     <div className="jss-report-preview-note">
       <strong>Blank template preview</strong>
-      <span>This follows the supplied JSS report design. No student details, marks, or junior grading calculations are filled in.</span>
+      <span>{className} · {term} design. No student details, marks, or junior grading calculations are filled in.</span>
     </div>
-    <article className="jss-report-card" aria-label="Blank Kilimanjaro International School junior terminal report template">
+    <article className="jss-report-card" aria-label={`Blank ${schoolName} ${className} ${term} report template`}>
       <header className="jss-report-header">
-        <img src="/kilimanjaro-international-school-logo.jpeg" alt="Kilimanjaro International School crest"/>
+        {school?.logoUrl
+          ? <img src={school.logoUrl} alt={`${schoolName} logo`}/>
+          : <span className="jss-report-logo-placeholder" aria-hidden="true"><BookOpen size={36}/></span>}
         <div>
-          <h2>KILIMANJARO INTERNATIONAL SCHOOL</h2>
-          <p>PLOT 998 JIKWOYI LAYOUT, AGWANGEDE, JIKWOYI – KARSHI ROAD, ABUJA</p>
+          <h2>{schoolName}</h2>
+          <p>{schoolAddress}</p>
+          {school?.motto && <p className="jss-report-motto">{school.motto}</p>}
           <h3>TERMINAL REPORT SHEET</h3>
         </div>
       </header>
@@ -52,7 +86,7 @@ export function JuniorReportTemplate() {
         <BlankField label="NAME" className="field-full"/>
         <BlankField label="ADMISSION NUMBER"/>
         <BlankField label="CLASS"/>
-        <BlankField label="TERM"/>
+        <BlankField label="TERM" value={term.toUpperCase()}/>
         <BlankField label="SESSION"/>
         <BlankField label="HOUSE"/>
         <BlankField label="TOTAL NO. IN CLASS"/>
@@ -61,15 +95,10 @@ export function JuniorReportTemplate() {
         <BlankField label="AGE"/>
       </section>
 
-      <section className="jss-report-totals" aria-label="Report totals">
-        <BlankField label="TOTAL MARKS OBTAINED"/>
-        <BlankField label="TOTAL MARKS OBTAINABLE"/>
-        <BlankField label="AVERAGE"/>
-        <BlankField label="GRADE"/>
-      </section>
+      {isThirdTerm && <ReportTotals/>}
 
       <div className="jss-subject-table-scroll">
-        <table className="jss-subject-table">
+        <table className={`jss-subject-table ${isThirdTerm ? 'jss-subject-table-third-term' : 'jss-subject-table-first-second'}`}>
           <thead>
             <tr>
               <th scope="col">S/N</th>
@@ -77,10 +106,19 @@ export function JuniorReportTemplate() {
               <th scope="col">TEST<br/>(40)</th>
               <th scope="col">EXAM<br/>(60)</th>
               <th scope="col">TOTAL<br/>(100)</th>
-              <th scope="col">1ST<br/>TERM</th>
-              <th scope="col">2ND<br/>TERM</th>
-              <th scope="col">AVERAGE</th>
-              <th scope="col">GRADE</th>
+              {isThirdTerm
+                ? <>
+                    <th scope="col">1ST<br/>TERM</th>
+                    <th scope="col">2ND<br/>TERM</th>
+                    <th scope="col">AVERAGE</th>
+                    <th scope="col">GRADE</th>
+                  </>
+                : <>
+                    <th scope="col">GRADE</th>
+                    <th scope="col">MAXIMUM</th>
+                    <th scope="col">MINIMUM</th>
+                    <th scope="col">CLASS<br/>AVERAGE</th>
+                  </>}
               <th scope="col">REMARK</th>
               <th scope="col">POSITION<br/>IN CLASS</th>
               <th scope="col">OUT OF</th>
@@ -96,6 +134,7 @@ export function JuniorReportTemplate() {
           </tbody>
         </table>
       </div>
+      {!isThirdTerm && <ReportTotals/>}
 
       <div className="jss-report-bottom-grid">
         <section className="jss-reference-scale">

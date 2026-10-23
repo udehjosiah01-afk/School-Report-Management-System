@@ -2,6 +2,9 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useState } from 'react'
 import { ArrowRight, ArrowUpRight, BookOpen, ChevronDown, ClipboardList, FileText, GraduationCap, HelpCircle, LayoutDashboard, Menu, Plus, Printer, Sprout, Users, X } from 'lucide-react'
 import { classes, subjectsByClass } from '../data/fixtures'
+import { getReportTemplateId } from '../data/report-templates'
+import { isResultTerm } from '../data/workbook-calculations'
+import type { ResultTerm } from '../data/workbook-calculations'
 import { JuniorReportTemplate } from '../components/junior-report-template'
 
 export const Route = createFileRoute('/workspace')({ component: WorkspacePreview })
@@ -12,6 +15,9 @@ function WorkspacePreview() {
   const [page, setPage] = useState<Page>('Overview')
   const [help, setHelp] = useState(false)
   const [menu, setMenu] = useState(false)
+  const [reportClassName, setReportClassName] = useState('JSS 1')
+  const [reportTerm, setReportTerm] = useState<ResultTerm>('Third Term')
+  const reportTemplateId = getReportTemplateId(reportClassName, reportTerm)
 
   const navigate = (nextPage: Page) => {
     setPage(nextPage)
@@ -55,67 +61,62 @@ function WorkspacePreview() {
       <main>
         <div className="heading-row">
           <div>
-            <div className="eyebrow">A CLEARER PICTURE OF PROGRESS</div>
-            <h1>{page === 'Overview' ? 'Set up your school workspace.' : page === 'Score sheet' ? 'Add a roster to begin score entry.' : 'Junior terminal report.'}</h1>
-            <p>{page === 'Overview' ? 'Create your school account to add classes, students, and staff.' : page === 'Score sheet' ? 'Score entry will be available after your school records and student roster are connected.' : 'A blank print preview based on your supplied school report template.'}</p>
+            <div className="eyebrow">SCHOOL RECORDS MANAGEMENT</div>
+            <h1>{page === 'Overview' ? 'School workspace overview' : page === 'Score sheet' ? 'Score sheet' : 'Report card template preview'}</h1>
+            <p>{page === 'Overview' ? 'Review the available workspace areas and sign in to view your school’s records.' : page === 'Score sheet' ? 'Score entry is available to authorised staff in their school workspace.' : 'Blank, printable layouts are shown for supported class and term combinations.'}</p>
           </div>
           {page === 'Report cards'
-            ? <button className="primary" onClick={() => window.print()}><Printer size={17}/> Print blank template</button>
+            ? <div className="report-preview-actions">
+                <label>Class<select value={reportClassName} onChange={event => setReportClassName(event.target.value)}>
+                  {classes.map(schoolClass => <option key={schoolClass}>{schoolClass}</option>)}
+                </select></label>
+                <label>Term<select value={reportTerm} onChange={event => {
+                  if (isResultTerm(event.target.value)) setReportTerm(event.target.value)
+                }}>
+                  <option>First Term</option><option>Second Term</option><option>Third Term</option>
+                </select></label>
+                {reportTemplateId && <button className="primary" onClick={() => window.print()}><Printer size={17}/> Print blank template</button>}
+              </div>
             : <a className="primary" href="/signup"><Plus size={17}/> Set up your school</a>}
         </div>
 
         {page === 'Overview' ? <>
-          <div className="stats-grid">
-            {[
-              { label: 'Students enrolled', value: '0', foot: 'No school records loaded', tint: 'sage', icon: Users },
-              { label: 'Class levels', value: String(classes.length), foot: 'Available during school setup', tint: 'sand', icon: GraduationCap },
-              { label: 'Saved scores', value: '0', foot: 'Score entry is not connected here yet', tint: 'blue', icon: ClipboardList },
-              { label: 'Reports ready', value: '0', foot: 'Reports use saved school records', tint: 'lilac', icon: FileText },
-            ].map(item => <article className="stat-card" key={item.label}>
-              <div className="stat-top"><span>{item.label}</span><span className={`stat-icon ${item.tint}`}><item.icon size={18}/></span></div>
-              <strong className="stat-value">{item.value}</strong>
-              <small>{item.foot}</small>
-            </article>)}
-          </div>
-
-          <div className="middle-grid">
-            <section className="panel performance">
-              <div className="panel-heading"><div><h2>Performance overview</h2><p>Class results will appear when school records are available.</p></div></div>
-              <div className="empty">No student scores are loaded.</div>
-              <div className="chart-footer"><span>Results will be calculated from saved school records.</span><button className="text-button" onClick={() => navigate('Score sheet')}>Score sheet <ArrowRight size={15}/></button></div>
+          <div className="workspace-overview-grid">
+            <section className="panel overview-status">
+              <div className="panel-heading"><div><h2>School records</h2><p>Private school data is available after staff sign in.</p></div></div>
+              <div className="overview-empty"><Users size={22}/><p>No school records are loaded in this public preview.</p><a className="primary" href="/login">Staff sign in <ArrowRight size={16}/></a></div>
             </section>
-            <section className="report-callout">
-              <span className="pill">REPORTING FOR YOUR SCHOOL</span>
-              <h2>Clear results.<br/>Thoughtfully reported.</h2>
-              <p>Your report cards will be available here after student records and scores are connected.</p>
-              <div className="paper-art" aria-hidden="true"><div className="paper-stamp"><GraduationCap size={19}/></div><div className="paper-heading"/><div className="paper-subtitle"/><div className="paper-rule"/><div className="paper-line"><i/><b/></div><div className="paper-line"><i/><b/></div><div className="paper-line"><i/><b/></div><div className="paper-line"><i/><b/></div></div>
-              <button onClick={() => navigate('Report cards')}>Go to reports <ArrowUpRight size={17}/></button>
+            <section className="panel overview-status">
+              <div className="panel-heading"><div><h2>Reports ready to print</h2><p>Report cards must be generated from saved results.</p></div></div>
+              <div className="overview-empty"><FileText size={22}/><p>No reports are ready to print. Saved-result report generation is not connected yet.</p><button className="secondary" onClick={() => navigate('Report cards')}>View blank template</button></div>
             </section>
           </div>
-
           <section className="panel class-panel">
-            <div className="panel-heading"><div><h2>Classes supported</h2><p>Set up your school to configure classes and enroll students.</p></div><span className="count-tag">{classes.length} class levels</span></div>
+            <div className="panel-heading"><div><h2>Starting class catalogue</h2><p>Starter subject suggestions; each school can choose or add subjects.</p></div></div>
             <div className="table-scroll">
               <table>
-                <thead><tr><th>CLASS</th><th>STUDENTS</th><th>SUBJECTS</th><th>CLASS AVERAGE</th><th>SETUP</th><th/></tr></thead>
+                <thead><tr><th>CLASS LEVEL</th><th>STARTER SUBJECTS</th><th>STATUS</th><th/></tr></thead>
                 <tbody>{classes.map((schoolClass, index) => <tr key={schoolClass}>
                   <td><span className={`class-symbol symbol-${index % 3}`}><GraduationCap size={18}/></span><strong>{schoolClass}</strong><small className="inline-secondary">{schoolClass.startsWith('JSS') ? 'Junior secondary' : 'Senior secondary'}</small></td>
-                  <td>0 <span className="muted">students</span></td>
-                  <td>{subjectsByClass[schoolClass].length} <span className="muted">subjects</span></td>
-                  <td><strong>—</strong></td>
-                  <td><span className="status">Not set up</span></td>
-                  <td><a className="row-action" href="/signup">Set up <ArrowRight size={15}/></a></td>
+                  <td>{subjectsByClass[schoolClass].length ? `${subjectsByClass[schoolClass].length} suggested subjects` : 'Choose subjects during setup'}</td>
+                  <td><span className="status">School setup required</span></td>
+                  <td><a className="row-action" href="/signup">School setup <ArrowRight size={15}/></a></td>
                 </tr>)}</tbody>
               </table>
             </div>
           </section>
-          <div className="bottom-note"><span><Sprout size={15}/> Built around your school. Designed for your everyday.</span><span>No student records or scores loaded</span></div>
+          <div className="bottom-note"><span>Public preview only</span><span>No student identities, scores, or performance charts shown</span></div>
         </> : page === 'Report cards'
-          ? <JuniorReportTemplate/>
+          ? reportTemplateId
+            ? <JuniorReportTemplate className={reportClassName} term={reportTerm}/>
+            : <section className="panel empty workspace-empty" role="status">
+                <h2>Report template not uploaded</h2>
+                <p>A {reportClassName} template is not available yet. The matching JSS 3 or SS design can be added when provided.</p>
+              </section>
           : <section className="panel empty workspace-empty">
-            <h2>No student roster yet</h2>
-            <p>Score entry will be available after your school records and student roster are connected.</p>
-            <a className="primary" href="/signup">Set up your school <ArrowRight size={16}/></a>
+            <h2>Sign in to your school workspace</h2>
+            <p>Score sheets contain private student information and are available only to authorised school staff.</p>
+            <a className="primary" href="/login">Staff sign in <ArrowRight size={16}/></a>
           </section>}
       </main>
     </div>
@@ -125,7 +126,7 @@ function WorkspacePreview() {
         <button className="modal-close icon-button" aria-label="Close help" onClick={() => setHelp(false)}><X size={20}/></button>
         <span className="brand-icon"><BookOpen size={25}/></span>
         <h2 id="help-title">Welcome to Classfolio.</h2>
-        <p>Your school’s results, with room to breathe.</p>
+        <p>Use the preview to review supported templates and school setup.</p>
         <ol>
           <li><strong>Create a school account.</strong> Verify your email and add your school profile.</li>
           <li><strong>Set up classes and staff.</strong> Prepare your roster and invite your team.</li>
