@@ -14,6 +14,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as SchoolDataRouteImport } from './routes/school-data'
 import { Route as SchoolSetupRouteImport } from './routes/school-setup'
 import { Route as SignupRouteImport } from './routes/signup'
+import { Route as WorkspaceRouteImport } from './routes/workspace'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -40,6 +41,11 @@ const SignupRoute = SignupRouteImport.update({
   path: '/signup',
   getParentRoute: () => rootRouteImport,
 } as any)
+const WorkspaceRoute = WorkspaceRouteImport.update({
+  id: '/workspace',
+  path: '/workspace',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -47,6 +53,7 @@ export interface FileRoutesByFullPath {
   '/school-data': typeof SchoolDataRoute
   '/school-setup': typeof SchoolSetupRoute
   '/signup': typeof SignupRoute
+  '/workspace': typeof WorkspaceRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -54,6 +61,7 @@ export interface FileRoutesByTo {
   '/school-data': typeof SchoolDataRoute
   '/school-setup': typeof SchoolSetupRoute
   '/signup': typeof SignupRoute
+  '/workspace': typeof WorkspaceRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -62,13 +70,23 @@ export interface FileRoutesById {
   '/school-data': typeof SchoolDataRoute
   '/school-setup': typeof SchoolSetupRoute
   '/signup': typeof SignupRoute
+  '/workspace': typeof WorkspaceRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/login' | '/school-data' | '/school-setup' | '/signup'
+  fullPaths:
+    '/' | '/login' | '/school-data' | '/school-setup' | '/signup' | '/workspace'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/login' | '/school-data' | '/school-setup' | '/signup'
-  id: '__root__' | '/' | '/login' | '/school-data' | '/school-setup' | '/signup'
+  to:
+    '/' | '/login' | '/school-data' | '/school-setup' | '/signup' | '/workspace'
+  id:
+    | '__root__'
+    | '/'
+    | '/login'
+    | '/school-data'
+    | '/school-setup'
+    | '/signup'
+    | '/workspace'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -77,6 +95,7 @@ export interface RootRouteChildren {
   SchoolDataRoute: typeof SchoolDataRoute
   SchoolSetupRoute: typeof SchoolSetupRoute
   SignupRoute: typeof SignupRoute
+  WorkspaceRoute: typeof WorkspaceRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -116,6 +135,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SignupRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/workspace': {
+      id: '/workspace'
+      path: '/workspace'
+      fullPath: '/workspace'
+      preLoaderRoute: typeof WorkspaceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -125,6 +151,7 @@ const rootRouteChildren: RootRouteChildren = {
   SchoolDataRoute: SchoolDataRoute,
   SchoolSetupRoute: SchoolSetupRoute,
   SignupRoute: SignupRoute,
+  WorkspaceRoute: WorkspaceRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

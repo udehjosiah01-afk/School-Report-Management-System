@@ -4,7 +4,7 @@ import { HeadContent, Scripts, createRootRoute } from '@tanstack/react-router'
 import '../styles.css'
 
 const siteName = 'Classfolio — School Results'
-const siteDescription = 'Less paperwork. More progress. A workspace for school results and report cards.'
+const siteDescription = 'A school-specific workspace for organising classes, school records and term results.'
 
 export const Route = createRootRoute({
   head: () => ({
