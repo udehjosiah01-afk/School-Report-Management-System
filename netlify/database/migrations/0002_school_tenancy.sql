@@ -77,31 +77,6 @@ FROM (
 WHERE legacy_users.identity_user_id <> ''
   AND EXISTS (SELECT 1 FROM schools WHERE name = 'Migrated school workspace');
 
-CREATE TABLE class_subjects (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  school_id uuid NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
-  class_id uuid NOT NULL,
-  subject_id uuid NOT NULL,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT class_subjects_school_class_subject_unique UNIQUE (school_id, class_id, subject_id),
-  CONSTRAINT class_subjects_id_school_unique UNIQUE (id, school_id),
-  CONSTRAINT class_subjects_class_school_fk
-    FOREIGN KEY (class_id, school_id) REFERENCES school_classes(id, school_id) ON DELETE CASCADE,
-  CONSTRAINT class_subjects_subject_school_fk
-    FOREIGN KEY (subject_id, school_id) REFERENCES subjects(id, school_id) ON DELETE CASCADE
-);
-
-INSERT INTO class_subjects (school_id, class_id, subject_id)
-SELECT DISTINCT
-  enrollment.school_id,
-  enrollment.class_id,
-  student_subject.subject_id
-FROM student_subjects AS student_subject
-JOIN student_enrollments AS enrollment ON enrollment.id = student_subject.enrollment_id
-UNION
-SELECT DISTINCT school_id, class_id, subject_id
-FROM staff_assignments;
-
 ALTER TABLE school_classes ALTER COLUMN school_id SET NOT NULL;
 ALTER TABLE students ALTER COLUMN school_id SET NOT NULL;
 ALTER TABLE student_enrollments ALTER COLUMN school_id SET NOT NULL;
@@ -140,6 +115,31 @@ ALTER TABLE subjects
   ADD CONSTRAINT subjects_school_name_unique UNIQUE (school_id, name),
   ADD CONSTRAINT subjects_id_school_unique UNIQUE (id, school_id);
 
+CREATE TABLE class_subjects (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  school_id uuid NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+  class_id uuid NOT NULL,
+  subject_id uuid NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT class_subjects_school_class_subject_unique UNIQUE (school_id, class_id, subject_id),
+  CONSTRAINT class_subjects_id_school_unique UNIQUE (id, school_id),
+  CONSTRAINT class_subjects_class_school_fk
+    FOREIGN KEY (class_id, school_id) REFERENCES school_classes(id, school_id) ON DELETE CASCADE,
+  CONSTRAINT class_subjects_subject_school_fk
+    FOREIGN KEY (subject_id, school_id) REFERENCES subjects(id, school_id) ON DELETE CASCADE
+);
+
+INSERT INTO class_subjects (school_id, class_id, subject_id)
+SELECT DISTINCT
+  enrollment.school_id,
+  enrollment.class_id,
+  student_subject.subject_id
+FROM student_subjects AS student_subject
+JOIN student_enrollments AS enrollment ON enrollment.id = student_subject.enrollment_id
+UNION
+SELECT DISTINCT school_id, class_id, subject_id
+FROM staff_assignments;
+
 ALTER TABLE student_subjects
   DROP CONSTRAINT student_subjects_enrollment_id_fkey,
   DROP CONSTRAINT student_subjects_subject_id_fkey,
@@ -165,8 +165,8 @@ ALTER TABLE staff_assignments
   ADD CONSTRAINT staff_assignments_school_user_class_subject_unique
     UNIQUE (school_id, identity_user_id, class_id, subject_id),
   ADD CONSTRAINT staff_assignments_membership_fk
-    FOREIGN KEY (identity_user_id, school_id)
-    REFERENCES school_memberships(identity_user_id, school_id) ON DELETE CASCADE,
+    FOREIGN KEY (school_id, identity_user_id)
+    REFERENCES school_memberships(school_id, identity_user_id) ON DELETE CASCADE,
   ADD CONSTRAINT staff_assignments_class_school_fk
     FOREIGN KEY (class_id, school_id) REFERENCES school_classes(id, school_id) ON DELETE CASCADE,
   ADD CONSTRAINT staff_assignments_subject_school_fk
@@ -181,7 +181,7 @@ ALTER TABLE score_entries
   ADD CONSTRAINT score_entries_school_enrollment_subject_term_unique
     UNIQUE (school_id, enrollment_id, subject_id, term_id),
   ADD CONSTRAINT score_entries_membership_fk
-    FOREIGN KEY (entered_by, school_id) REFERENCES school_memberships(identity_user_id, school_id),
+    FOREIGN KEY (school_id, entered_by) REFERENCES school_memberships(school_id, identity_user_id),
   ADD CONSTRAINT score_entries_enrollment_school_fk
     FOREIGN KEY (enrollment_id, school_id) REFERENCES student_enrollments(id, school_id) ON DELETE CASCADE,
   ADD CONSTRAINT score_entries_subject_school_fk
@@ -191,13 +191,13 @@ ALTER TABLE score_entries
 
 ALTER TABLE audit_events
   ADD CONSTRAINT audit_events_membership_fk
-    FOREIGN KEY (identity_user_id, school_id) REFERENCES school_memberships(identity_user_id, school_id);
+    FOREIGN KEY (school_id, identity_user_id) REFERENCES school_memberships(school_id, identity_user_id);
 
 ALTER TABLE system_settings DROP CONSTRAINT system_settings_pkey;
 ALTER TABLE system_settings
   ADD CONSTRAINT system_settings_school_key_unique UNIQUE (school_id, key),
   ADD CONSTRAINT system_settings_membership_fk
-    FOREIGN KEY (updated_by, school_id) REFERENCES school_memberships(identity_user_id, school_id);
+    FOREIGN KEY (school_id, updated_by) REFERENCES school_memberships(school_id, identity_user_id);
 
 CREATE INDEX student_enrollments_school_class_year_idx
   ON student_enrollments (school_id, class_id, academic_year);
