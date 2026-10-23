@@ -98,15 +98,15 @@ function LandingPage() {
       </section>
       <aside className="landing-status" role="note">
         <span><i/> Workspace status</span>
-        <p>School registration and records setup are available. Score entry and reports still need to be connected to saved school records; the sample workspace is clearly marked and does not save changes.</p>
-        <a href="/workspace">Explore the sample workspace <ArrowRight size={15}/></a>
+        <p>School registration and records setup are available. Score entry and reports still need to be connected to saved school records; the workspace preview contains no student names or scores.</p>
+        <a href="/workspace">View the workspace preview <ArrowRight size={15}/></a>
       </aside>
     </main>
 
     <footer className="landing-footer">
       <a className="landing-brand" href="/" aria-label="Classfolio home"><span className="brand-icon"><BookOpen size={20}/></span>classfolio<span className="brand-dot">.</span></a>
       <span>Clearer school results. More room for what matters.</span>
-      <a href="/workspace">Explore sample workspace</a>
+      <a href="/workspace">View workspace preview</a>
     </footer>
   </div>
 }

@@ -1,0 +1,476 @@
+.jss-report-preview {
+  min-width: 0;
+}
+
+.jss-report-preview-note {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 12px;
+  align-items: baseline;
+  margin-bottom: 14px;
+  padding: 12px 15px;
+  border: 1px solid #e4e9dd;
+  border-radius: 8px;
+  background: #f2f5ec;
+  color: #738174;
+  font-size: 10px;
+  line-height: 1.55;
+}
+
+.jss-report-preview-note strong {
+  color: #45654b;
+}
+
+.jss-report-card {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 30px;
+  border: 1px solid #dce2d8;
+  background: #fff;
+  color: #202a24;
+  box-shadow: 0 8px 25px #243b2e0c;
+  font-family: Arial, sans-serif;
+}
+
+.jss-report-header {
+  display: grid;
+  grid-template-columns: 92px 1fr;
+  align-items: center;
+  gap: 16px;
+  padding: 0 0 15px;
+  border-bottom: 2px solid #354b3a;
+  text-align: center;
+}
+
+.jss-report-header img {
+  width: 86px;
+  height: 86px;
+  object-fit: contain;
+}
+
+.jss-report-header h2 {
+  margin: 0;
+  color: #273e32;
+  font-family: Arial, sans-serif;
+  font-size: clamp(17px, 2vw, 23px);
+  font-weight: 800;
+  letter-spacing: .07em;
+}
+
+.jss-report-header p {
+  margin: 5px 0 8px;
+  color: #56665a;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .035em;
+}
+
+.jss-report-header h3 {
+  margin: 0;
+  color: #344c39;
+  font-size: 14px;
+  letter-spacing: .13em;
+}
+
+.jss-student-fields {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px 12px;
+  padding: 15px 0 12px;
+}
+
+.jss-field {
+  display: flex;
+  min-width: 0;
+  min-height: 22px;
+  align-items: end;
+  gap: 5px;
+  color: #27342b;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: .045em;
+}
+
+.jss-field span {
+  flex: 0 0 auto;
+}
+
+.jss-field i {
+  min-width: 12px;
+  flex: 1 1 auto;
+  border-bottom: 1px solid #8b968b;
+}
+
+.jss-field.field-full {
+  grid-column: 1 / -1;
+}
+
+.jss-report-totals {
+  display: grid;
+  grid-template-columns: 1.3fr 1.45fr 1fr .8fr;
+  gap: 12px;
+  margin: 1px 0 12px;
+  padding: 10px 11px;
+  border: 1px solid #aeb9aa;
+  background: #f4f6f0;
+}
+
+.jss-report-totals .jss-field {
+  min-height: 18px;
+  font-size: 7px;
+}
+
+.jss-subject-table-scroll {
+  overflow-x: auto;
+}
+
+.jss-subject-table,
+.jss-reference-scale table,
+.jss-domain-section table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.jss-subject-table {
+  min-width: 900px;
+}
+
+.jss-subject-table th,
+.jss-subject-table td,
+.jss-reference-scale th,
+.jss-reference-scale td,
+.jss-domain-section th,
+.jss-domain-section td {
+  border: 1px solid #849183;
+}
+
+.jss-subject-table thead th {
+  height: 34px;
+  padding: 4px 3px;
+  background: #e9eee5;
+  color: #2b3d30;
+  font-size: 7px;
+  line-height: 1.25;
+  text-align: center;
+}
+
+.jss-subject-table tbody td,
+.jss-subject-table tbody th {
+  height: 25px;
+  padding: 3px 4px;
+  font-size: 8px;
+  font-weight: 400;
+  text-align: center;
+}
+
+.jss-subject-table tbody th {
+  overflow: hidden;
+  font-weight: 600;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.jss-subject-table th:nth-child(1) { width: 4%; }
+.jss-subject-table th:nth-child(2) { width: 17%; }
+.jss-subject-table th:nth-child(3),
+.jss-subject-table th:nth-child(4),
+.jss-subject-table th:nth-child(5),
+.jss-subject-table th:nth-child(6),
+.jss-subject-table th:nth-child(7),
+.jss-subject-table th:nth-child(8),
+.jss-subject-table th:nth-child(9) { width: 6%; }
+.jss-subject-table th:nth-child(10) { width: 9%; }
+.jss-subject-table th:nth-child(11) { width: 8%; }
+.jss-subject-table th:nth-child(12) { width: 5%; }
+.jss-subject-table th:nth-child(13) { width: 9%; }
+
+.jss-report-bottom-grid {
+  display: grid;
+  grid-template-columns: .78fr 1.12fr 1fr;
+  gap: 11px;
+  margin-top: 13px;
+}
+
+.jss-reference-scale,
+.jss-domain-section {
+  min-width: 0;
+}
+
+.jss-reference-scale h4,
+.jss-domain-section h4,
+.jss-comments h4 {
+  margin: 0;
+  color: #334839;
+  font-family: Arial, sans-serif;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: .06em;
+}
+
+.jss-reference-scale h4,
+.jss-domain-section h4 {
+  margin-bottom: 5px;
+}
+
+.jss-reference-scale th,
+.jss-reference-scale td,
+.jss-domain-section th,
+.jss-domain-section td {
+  height: 18px;
+  padding: 3px 5px;
+  font-size: 7px;
+  text-align: left;
+}
+
+.jss-reference-scale thead th,
+.jss-domain-section thead th {
+  background: #edf1e9;
+  color: #344738;
+  font-size: 6px;
+  letter-spacing: .04em;
+}
+
+.jss-reference-scale tbody td:last-child,
+.jss-domain-section tbody td {
+  width: 34px;
+  text-align: center;
+}
+
+.jss-reference-scale p {
+  margin: 5px 0 0;
+  color: #68756a;
+  font-size: 6px;
+  line-height: 1.4;
+}
+
+.jss-domain-section tbody th {
+  font-weight: 400;
+}
+
+.jss-comments {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-top: 13px;
+}
+
+.jss-comments>div {
+  display: grid;
+  grid-template-rows: auto 34px;
+  gap: 4px;
+  padding: 8px 9px 0;
+  border: 1px solid #9aa596;
+}
+
+.jss-comments i {
+  border-bottom: 1px solid #d4dbd0;
+}
+
+.jss-report-footer {
+  display: flex;
+  min-height: 76px;
+  align-items: end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-top: 8px;
+}
+
+.jss-report-footer>.jss-field {
+  width: min(48%, 340px);
+  margin-bottom: 20px;
+}
+
+.jss-stamp-box {
+  display: grid;
+  width: 116px;
+  height: 68px;
+  place-items: center;
+  border: 1px dashed #9aa596;
+  color: #667365;
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: .06em;
+}
+
+@media (max-width: 640px) {
+  .jss-report-card {
+    min-width: 900px;
+    padding: 20px;
+  }
+
+  .jss-report-preview {
+    overflow-x: auto;
+  }
+}
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 5mm;
+  }
+
+  body:has(.jss-report-card) {
+    background: #fff;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  body:has(.jss-report-card) .sidebar,
+  body:has(.jss-report-card) .topbar,
+  body:has(.jss-report-card) .heading-row,
+  body:has(.jss-report-card) .context-bar,
+  body:has(.jss-report-card) .jss-report-preview-note {
+    display: none !important;
+  }
+
+  body:has(.jss-report-card) .main-shell {
+    width: 100%;
+    margin: 0;
+  }
+
+  body:has(.jss-report-card) .main-shell > main {
+    max-width: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .jss-report-preview,
+  .jss-subject-table-scroll {
+    overflow: visible;
+  }
+
+  .jss-report-card {
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    box-shadow: none;
+  }
+
+  .jss-report-header {
+    grid-template-columns: 20mm 1fr;
+    gap: 3mm;
+    padding-bottom: 2mm;
+  }
+
+  .jss-report-header img {
+    width: 19mm;
+    height: 19mm;
+  }
+
+  .jss-report-header h2 {
+    font-size: 15pt;
+  }
+
+  .jss-report-header p {
+    margin: 1mm 0;
+    font-size: 6pt;
+  }
+
+  .jss-report-header h3 {
+    font-size: 9pt;
+  }
+
+  .jss-student-fields {
+    gap: 1mm 2mm;
+    padding: 2mm 0;
+  }
+
+  .jss-field {
+    min-height: 5mm;
+    gap: 1mm;
+    font-size: 5.5pt;
+  }
+
+  .jss-report-totals {
+    gap: 2mm;
+    margin: 0 0 2mm;
+    padding: 1.5mm 2mm;
+  }
+
+  .jss-report-totals .jss-field {
+    min-height: 4mm;
+    font-size: 5pt;
+  }
+
+  .jss-subject-table {
+    min-width: 0;
+    width: 100%;
+    table-layout: fixed;
+  }
+
+  .jss-subject-table thead th {
+    height: 7mm;
+    padding: .6mm .3mm;
+    font-size: 5pt;
+    line-height: 1.1;
+  }
+
+  .jss-subject-table tbody td,
+  .jss-subject-table tbody th {
+    height: 5mm;
+    padding: .5mm .6mm;
+    font-size: 5.2pt;
+  }
+
+  .jss-report-bottom-grid {
+    gap: 2mm;
+    margin-top: 2mm;
+  }
+
+  .jss-reference-scale h4,
+  .jss-domain-section h4,
+  .jss-comments h4 {
+    font-size: 5.5pt;
+  }
+
+  .jss-reference-scale th,
+  .jss-reference-scale td,
+  .jss-domain-section th,
+  .jss-domain-section td {
+    height: 4mm;
+    padding: .5mm 1mm;
+    font-size: 5pt;
+  }
+
+  .jss-reference-scale thead th,
+  .jss-domain-section thead th {
+    font-size: 4.5pt;
+  }
+
+  .jss-reference-scale p {
+    margin-top: 1mm;
+    font-size: 4.5pt;
+  }
+
+  .jss-comments {
+    gap: 2mm;
+    margin-top: 2mm;
+  }
+
+  .jss-comments>div {
+    grid-template-rows: auto 8mm;
+    gap: 1mm;
+    padding: 1.5mm 2mm 0;
+  }
+
+  .jss-report-footer {
+    min-height: 18mm;
+    gap: 4mm;
+    margin-top: 1mm;
+  }
+
+  .jss-report-footer>.jss-field {
+    margin-bottom: 4mm;
+  }
+
+  .jss-stamp-box {
+    width: 29mm;
+    height: 16mm;
+    font-size: 5pt;
+  }
+}

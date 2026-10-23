@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { classes, initialScores, names, subjects, subjectsByClass, terms } from './fixtures.ts'
+import { classes, subjects, subjectsByClass, terms } from './fixtures.ts'
 import { validateDraftScoreInput } from './score-validation.ts'
 import {
   calculateCompetitionRanks,
@@ -17,20 +17,14 @@ import {
   TEST_MAX,
 } from './workbook-calculations.ts'
 
-test('illustrative fixtures contain the workbook subjects and valid 40/60 scores', () => {
+test('curriculum fixtures contain the supported classes and workbook subjects', () => {
   assert.deepEqual(classes, ['JSS 1', 'JSS 2', 'JSS 3', 'SS 1', 'SS 2', 'SS 3'])
-  assert.equal(names.length, 16)
   assert.equal(subjects.length, 13)
   assert.equal(terms.length, 3)
   assert.equal(subjectsByClass['JSS 1'].length, 17)
   assert.equal(subjectsByClass['JSS 2'].length, 17)
   assert.equal(subjectsByClass['JSS 3'].length, 0)
   assert.equal(subjectsByClass['SS 1'].length, 13)
-
-  for (const [testScore, examScore] of Object.values(initialScores())) {
-    if (testScore !== null) assert.equal(isAssessmentScoreValid(testScore, TEST_MAX), true)
-    if (examScore !== null) assert.equal(isAssessmentScoreValid(examScore, EXAM_MAX), true)
-  }
 })
 
 test('test and examination totals add scores and treat blank scores as zero', () => {
