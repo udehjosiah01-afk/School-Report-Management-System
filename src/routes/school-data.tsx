@@ -144,7 +144,13 @@ function SchoolData() {
   }
 
   async function saveIndividualScore(row: (typeof scoreRows)[number]) {
-    if (bulkSavingRef.current || individualSavingIdsRef.current.has(row.enrollmentId)) return
+    const selected = loadedSheetSelection
+    if (
+      bulkSavingRef.current ||
+      individualSavingIdsRef.current.has(row.enrollmentId) ||
+      !selected ||
+      !scoreSheetIsCurrent
+    ) return
     individualSavingIdsRef.current.add(row.enrollmentId)
     setIndividualSavingIds(new Set(individualSavingIdsRef.current))
     try {
@@ -152,8 +158,8 @@ function SchoolData() {
         () => saveDraftScore({
           data: {
             enrollmentId: row.enrollmentId,
-            subjectId: loadedSheetSelection!.subjectId,
-            termId: loadedSheetSelection!.termId,
+            subjectId: selected.subjectId,
+            termId: selected.termId,
             testScore: row.testScore,
             examScore: row.examScore,
           },
