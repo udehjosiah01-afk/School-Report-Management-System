@@ -1,7 +1,7 @@
 import { logout } from '@netlify/identity'
 import { createFileRoute, redirect, useRouter } from '@tanstack/react-router'
 import { Printer } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { getCurrentStaff } from '../server/auth'
 import { JuniorReportTemplate } from '../components/junior-report-template'
 import { getReportTemplateId } from '../data/report-templates'
@@ -22,6 +22,18 @@ import {
   setStaffRole,
 } from '../server/school-actions'
 import { saveDraftScore } from '../server/score-actions'
+
+type ScoreSheetSaveFailure = {
+  studentName: string
+  message: string
+}
+
+type ScoreSheetSaveSummary = {
+  savedCount: number
+  totalCount: number
+  failures: ScoreSheetSaveFailure[]
+  refreshError?: string
+}
 
 export const Route = createFileRoute('/school-data')({
   beforeLoad: async () => {
@@ -58,6 +70,12 @@ function SchoolData() {
   const [sheetSelection, setSheetSelection] = useState({ classId: '', subjectId: '', termId: '' })
   const [loadedSheetSelection, setLoadedSheetSelection] = useState<typeof sheetSelection | null>(null)
   const [scoreRows, setScoreRows] = useState<Awaited<ReturnType<typeof getScoreSheet>>>([])
+  const [bulkSaving, setBulkSaving] = useState(false)
+  const [bulkSaveProgress, setBulkSaveProgress] = useState({ completed: 0, total: 0 })
+  const [bulkSaveSummary, setBulkSaveSummary] = useState<ScoreSheetSaveSummary | null>(null)
+  const [individualSavingIds, setIndividualSavingIds] = useState<ReadonlySet<string>>(() => new Set())
+  const bulkSavingRef = useRef(false)
+  const individualSavingIdsRef = useRef(new Set<string>())
   const scoreSheetIsCurrent = loadedSheetSelection !== null &&
     loadedSheetSelection.classId === sheetSelection.classId &&
     loadedSheetSelection.subjectId === sheetSelection.subjectId &&
@@ -122,6 +140,100 @@ function SchoolData() {
       setLoadedSheetSelection(selected)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'The score sheet could not be loaded.')
+    }
+  }
+
+  async function saveIndividualScore(row: (typeof scoreRows)[number]) {
+    if (bulkSavingRef.current || individualSavingIdsRef.current.has(row.enrollmentId)) return
+    individualSavingIdsRef.current.add(row.enrollmentId)
+    setIndividualSavingIds(new Set(individualSavingIdsRef.current))
+    try {
+      await run(
+        () => saveDraftScore({
+          data: {
+            enrollmentId: row.enrollmentId,
+            subjectId: loadedSheetSelection!.subjectId,
+            termId: loadedSheetSelection!.termId,
+            testScore: row.testScore,
+            examScore: row.examScore,
+          },
+        }),
+        `Draft saved for ${row.firstName} ${row.lastName}.`,
+      )
+    } finally {
+      individualSavingIdsRef.current.delete(row.enrollmentId)
+      setIndividualSavingIds(new Set(individualSavingIdsRef.current))
+    }
+  }
+
+  async function saveAllDraftScores() {
+    if (
+      bulkSavingRef.current ||
+      individualSavingIdsRef.current.size > 0 ||
+      !scoreSheetIsCurrent ||
+      !loadedSheetSelection ||
+      scoreRows.length === 0
+    ) return
+
+    bulkSavingRef.current = true
+    setBulkSaving(true)
+    setBulkSaveSummary(null)
+    setNotice('')
+    setError('')
+    const selected = { ...loadedSheetSelection }
+    const rowsToSave = scoreRows.map(row => ({ ...row }))
+    const failures: ScoreSheetSaveFailure[] = []
+    let savedCount = 0
+    setBulkSaveProgress({ completed: 0, total: rowsToSave.length })
+
+    try {
+      for (const row of rowsToSave) {
+        try {
+          await saveDraftScore({
+            data: {
+              enrollmentId: row.enrollmentId,
+              subjectId: selected.subjectId,
+              termId: selected.termId,
+              testScore: row.testScore,
+              examScore: row.examScore,
+            },
+          })
+          savedCount += 1
+        } catch (reason) {
+          failures.push({
+            studentName: `${row.firstName} ${row.lastName}`,
+            message: reason instanceof Error ? reason.message : 'The score could not be saved.',
+          })
+        }
+        setBulkSaveProgress({ completed: savedCount + failures.length, total: rowsToSave.length })
+      }
+
+      let refreshError: string | undefined
+      if (savedCount > 0) {
+        try {
+          const refreshedRows = await getScoreSheet({ data: selected })
+          setScoreRows(refreshedRows)
+          setLoadedSheetSelection(selected)
+        } catch (reason) {
+          refreshError = reason instanceof Error ? reason.message : 'The updated score sheet could not be reloaded.'
+        }
+        try {
+          await router.invalidate()
+        } catch (reason) {
+          const message = reason instanceof Error ? reason.message : 'School workspace data could not be refreshed.'
+          refreshError = refreshError ? `${refreshError} ${message}` : message
+        }
+      }
+
+      setBulkSaveSummary({
+        savedCount,
+        totalCount: rowsToSave.length,
+        failures,
+        refreshError,
+      })
+    } finally {
+      bulkSavingRef.current = false
+      setBulkSaving(false)
     }
   }
 
@@ -370,19 +482,34 @@ function SchoolData() {
       <section className="records-section">
         <h2>Enter draft scores</h2>
         <div className="score-selection">
-          <label>Class<select value={sheetSelection.classId} onChange={event => { setLoadedSheetSelection(null); setScoreRows([]); setSheetSelection({ ...sheetSelection, classId: event.target.value }) }}><option value="">Select class</option>{setup.classes.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-          <label>Subject<select value={sheetSelection.subjectId} onChange={event => { setLoadedSheetSelection(null); setScoreRows([]); setSheetSelection({ ...sheetSelection, subjectId: event.target.value }) }}><option value="">Select subject</option>{setup.subjects.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-          <label>Term<select value={sheetSelection.termId} onChange={event => { setLoadedSheetSelection(null); setScoreRows([]); setSheetSelection({ ...sheetSelection, termId: event.target.value }) }}><option value="">Select term</option>{setup.terms.map(item => <option key={item.id} value={item.id}>{item.academicYear} · {item.name}</option>)}</select></label>
-          <button className="primary" onClick={() => void loadScores()} disabled={!sheetSelection.classId || !sheetSelection.subjectId || !sheetSelection.termId}>Load score sheet</button>
+          <label>Class<select value={sheetSelection.classId} disabled={bulkSaving} onChange={event => { setLoadedSheetSelection(null); setScoreRows([]); setBulkSaveSummary(null); setSheetSelection({ ...sheetSelection, classId: event.target.value }) }}><option value="">Select class</option>{setup.classes.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+          <label>Subject<select value={sheetSelection.subjectId} disabled={bulkSaving} onChange={event => { setLoadedSheetSelection(null); setScoreRows([]); setBulkSaveSummary(null); setSheetSelection({ ...sheetSelection, subjectId: event.target.value }) }}><option value="">Select subject</option>{setup.subjects.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+          <label>Term<select value={sheetSelection.termId} disabled={bulkSaving} onChange={event => { setLoadedSheetSelection(null); setScoreRows([]); setBulkSaveSummary(null); setSheetSelection({ ...sheetSelection, termId: event.target.value }) }}><option value="">Select term</option>{setup.terms.map(item => <option key={item.id} value={item.id}>{item.academicYear} · {item.name}</option>)}</select></label>
+          <button className="primary" onClick={() => void loadScores()} disabled={bulkSaving || !sheetSelection.classId || !sheetSelection.subjectId || !sheetSelection.termId}>Load score sheet</button>
+          {scoreSheetIsCurrent && scoreRows.length > 0 && <button className="primary" type="button" onClick={() => void saveAllDraftScores()} disabled={bulkSaving || individualSavingIds.size > 0}>
+            {bulkSaving ? 'Saving score sheet…' : 'Save all draft scores'}
+          </button>}
         </div>
+        {bulkSaving && <p className="form-notice" role="status">Saving score sheet… {bulkSaveProgress.completed} of {bulkSaveProgress.total} rows processed.</p>}
+        {bulkSaveSummary && <>
+          <p className={bulkSaveSummary.failures.length || bulkSaveSummary.refreshError ? 'form-error' : 'form-notice'} role={bulkSaveSummary.failures.length || bulkSaveSummary.refreshError ? 'alert' : 'status'}>
+            {bulkSaveSummary.failures.length
+              ? `Saved ${bulkSaveSummary.savedCount} of ${bulkSaveSummary.totalCount} rows. Some scores could not be saved.`
+              : `Saved all ${bulkSaveSummary.savedCount} draft score rows.`}
+            {bulkSaveSummary.refreshError && ` Refresh issue: ${bulkSaveSummary.refreshError}`}
+          </p>
+          {bulkSaveSummary.failures.length > 0 && <ul className="form-error" aria-label="Scores that failed to save">
+            {bulkSaveSummary.failures.map((failure, index) => <li key={`${failure.studentName}-${index}`}>{failure.studentName}: {failure.message}</li>)}
+          </ul>}
+        </>}
         {scoreSheetIsCurrent && scoreRows.length > 0 && <div className="records-table-wrap"><table className="records-table">
           <thead><tr><th>Student</th><th>Admission no.</th><th>Test / 40</th><th>Examination / 60</th><th></th></tr></thead>
           <tbody>{scoreRows.map(row => <tr key={row.enrollmentId}>
             <td>{row.firstName} {row.lastName}</td>
             <td>{row.admissionNumber}</td>
-            <td><input aria-label={`Test score for ${row.firstName} ${row.lastName}`} type="number" min="0" max="40" step="1" value={row.testScore ?? ''} onChange={event => setScoreRows(rows => rows.map(item => item.enrollmentId === row.enrollmentId ? { ...item, testScore: event.target.value === '' ? null : Number(event.target.value) } : item))} /></td>
-            <td><input aria-label={`Examination score for ${row.firstName} ${row.lastName}`} type="number" min="0" max="60" step="1" value={row.examScore ?? ''} onChange={event => setScoreRows(rows => rows.map(item => item.enrollmentId === row.enrollmentId ? { ...item, examScore: event.target.value === '' ? null : Number(event.target.value) } : item))} /></td>
-            <td><button className="secondary" onClick={() => void run(() => saveDraftScore({ data: { enrollmentId: row.enrollmentId, subjectId: loadedSheetSelection.subjectId, termId: loadedSheetSelection.termId, testScore: row.testScore, examScore: row.examScore } }), `Draft saved for ${row.firstName} ${row.lastName}.`)}>Save draft</button></td>
+            <td><input aria-label={`Test score for ${row.firstName} ${row.lastName}`} type="number" min="0" max="40" step="1" disabled={bulkSaving} value={row.testScore ?? ''} onChange={event => setScoreRows(rows => rows.map(item => item.enrollmentId === row.enrollmentId ? { ...item, testScore: event.target.value === '' ? null : Number(event.target.value) } : item))} /></td>
+            <td><input aria-label={`Examination score for ${row.firstName} ${row.lastName}`} type="number" min="0" max="60" step="1" disabled={bulkSaving} value={row.examScore ?? ''} onChange={event => setScoreRows(rows => rows.map(item => item.enrollmentId === row.enrollmentId ? { ...item, examScore: event.target.value === '' ? null : Number(event.target.value) } : item))} /></td>
+            <td><button className="secondary" disabled={bulkSaving || individualSavingIds.has(row.enrollmentId)} onClick={() => void saveIndividualScore(row)}>{individualSavingIds.has(row.enrollmentId) ? 'Saving…' : 'Save draft'}</button></td>
           </tr>)}</tbody>
         </table></div>}
         {scoreSheetIsCurrent && scoreRows.length === 0
