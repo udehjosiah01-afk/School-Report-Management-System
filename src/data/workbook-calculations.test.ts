@@ -17,14 +17,16 @@ import {
   TEST_MAX,
 } from './workbook-calculations.ts'
 
-test('curriculum fixtures contain the supported classes and workbook subjects', () => {
+test('school curriculum fixtures and workbook calculation subjects stay distinct', () => {
   assert.deepEqual(classes, ['JSS 1', 'JSS 2', 'JSS 3', 'SS 1', 'SS 2', 'SS 3'])
   assert.equal(subjects.length, 13)
   assert.equal(terms.length, 3)
-  assert.equal(subjectsByClass['JSS 1'].length, 17)
-  assert.equal(subjectsByClass['JSS 2'].length, 17)
-  assert.equal(subjectsByClass['JSS 3'].length, 0)
-  assert.equal(subjectsByClass['SS 1'].length, 13)
+  assert.equal(subjectsByClass['JSS 1'].length, 14)
+  assert.equal(subjectsByClass['JSS 2'].length, 14)
+  assert.equal(subjectsByClass['JSS 3'].length, 17)
+  assert.equal(subjectsByClass['SS 1'].length, 18)
+  assert.equal(subjectsByClass['SS 2'].length, 18)
+  assert.equal(subjectsByClass['SS 3'].length, 18)
 })
 
 test('test and examination totals add scores and treat blank scores as zero', () => {

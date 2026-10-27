@@ -2,10 +2,10 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useState } from 'react'
 import { ArrowRight, ArrowUpRight, BookOpen, ChevronDown, ClipboardList, FileText, GraduationCap, HelpCircle, LayoutDashboard, Menu, Plus, Printer, Sprout, Users, X } from 'lucide-react'
 import { classes, subjectsByClass } from '../data/fixtures'
-import { getReportTemplateId } from '../data/report-templates'
+import { getReportTemplateId, getReportTemplateSubjects } from '../data/report-templates'
 import { isResultTerm } from '../data/workbook-calculations'
 import type { ResultTerm } from '../data/workbook-calculations'
-import { JuniorReportTemplate } from '../components/junior-report-template'
+import { SchoolReportTemplate } from '../components/school-report-template'
 
 export const Route = createFileRoute('/workspace')({ component: WorkspacePreview })
 
@@ -18,6 +18,7 @@ function WorkspacePreview() {
   const [reportClassName, setReportClassName] = useState('JSS 1')
   const [reportTerm, setReportTerm] = useState<ResultTerm>('Third Term')
   const reportTemplateId = getReportTemplateId(reportClassName, reportTerm)
+  const reportTemplateSubjects = getReportTemplateSubjects(reportClassName)
 
   const navigate = (nextPage: Page) => {
     setPage(nextPage)
@@ -107,11 +108,11 @@ function WorkspacePreview() {
           </section>
           <div className="bottom-note"><span>Public preview only</span><span>No student identities, scores, or performance charts shown</span></div>
         </> : page === 'Report cards'
-          ? reportTemplateId
-            ? <JuniorReportTemplate className={reportClassName} term={reportTerm}/>
+          ? reportTemplateId && reportTemplateSubjects
+            ? <SchoolReportTemplate className={reportClassName} term={reportTerm} subjects={reportTemplateSubjects}/>
             : <section className="panel empty workspace-empty" role="status">
                 <h2>Report template not uploaded</h2>
-                <p>A {reportClassName} template is not available yet. The matching JSS 3 or SS design can be added when provided.</p>
+                <p>A report template for {reportClassName} is not available yet.</p>
               </section>
           : <section className="panel empty workspace-empty">
             <h2>Sign in to your school workspace</h2>

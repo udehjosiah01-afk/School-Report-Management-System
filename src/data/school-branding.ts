@@ -52,20 +52,20 @@ export function schoolColorsNeedContrastWarning(mainColor: string, accentColor: 
   )
 }
 
-export function validateSchoolLogoDataUrl(value: unknown): string | null {
+function validateImageDataUrl(value: unknown, label: string): string | null {
   if (value === null || value === undefined || value === '') return null
   if (typeof value !== 'string' || value.length > 700_000) {
-    throw new Error('The school logo must be a PNG, JPG, or WebP image no larger than 512 KB.')
+    throw new Error(`The ${label} must be a PNG, JPG, or WebP image no larger than 512 KB.`)
   }
   const match = /^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/]+={0,2})$/.exec(value)
-  if (!match) throw new Error('The school logo must be a PNG, JPG, or WebP image no larger than 512 KB.')
+  if (!match) throw new Error(`The ${label} must be a PNG, JPG, or WebP image no larger than 512 KB.`)
   let bytes: string
   try {
     bytes = atob(match[2])
   } catch {
-    throw new Error('The school logo file is invalid.')
+    throw new Error(`The ${label} file is invalid.`)
   }
-  if (bytes.length > maxLogoBytes) throw new Error('The school logo must be 512 KB or smaller.')
+  if (bytes.length > maxLogoBytes) throw new Error(`The ${label} must be 512 KB or smaller.`)
   const signature = Array.from(bytes.slice(0, 12), character => character.charCodeAt(0))
   const validImage = match[1] === 'png'
     ? signature.slice(0, 8).join(',') === '137,80,78,71,13,10,26,10'
@@ -73,6 +73,14 @@ export function validateSchoolLogoDataUrl(value: unknown): string | null {
       ? signature.slice(0, 3).join(',') === '255,216,255'
       : signature.slice(0, 4).join(',') === '82,73,70,70' &&
         signature.slice(8, 12).join(',') === '87,69,66,80'
-  if (!validImage) throw new Error('The school logo file does not match its image type.')
+  if (!validImage) throw new Error(`The ${label} file does not match its image type.`)
   return value
+}
+
+export function validateSchoolLogoDataUrl(value: unknown) {
+  return validateImageDataUrl(value, 'school logo')
+}
+
+export function validateStudentPhotoDataUrl(value: unknown) {
+  return validateImageDataUrl(value, 'learner passport photo')
 }

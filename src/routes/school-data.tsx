@@ -3,13 +3,17 @@ import { createFileRoute, redirect, useRouter } from '@tanstack/react-router'
 import { Printer } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { getCurrentStaff } from '../server/auth'
-import { JuniorReportTemplate } from '../components/junior-report-template'
-import { getReportTemplateId } from '../data/report-templates'
+import { SchoolReportTemplate } from '../components/school-report-template'
+import { getConfiguredSubjectsForClass } from '../data/class-subjects'
+import { getReportTemplateId, getReportTemplateSubjects } from '../data/report-templates'
 import { isResultTerm } from '../data/workbook-calculations'
 import type { ResultTerm } from '../data/workbook-calculations'
+import { createScoreSheetSaver } from '../data/score-sheet-saving'
+import type { ScoreSheetSaveSummary } from '../data/score-sheet-saving'
 import { schoolThemeStyle } from '../data/school-branding'
 import {
   assignTeacher,
+  addCurriculumPack,
   addSchoolStaff,
   createAcademicTerm,
   createSchoolClass,
@@ -22,18 +26,6 @@ import {
   setStaffRole,
 } from '../server/school-actions'
 import { saveDraftScore } from '../server/score-actions'
-
-type ScoreSheetSaveFailure = {
-  studentName: string
-  message: string
-}
-
-type ScoreSheetSaveSummary = {
-  savedCount: number
-  totalCount: number
-  failures: ScoreSheetSaveFailure[]
-  refreshError?: string
-}
 
 export const Route = createFileRoute('/school-data')({
   beforeLoad: async () => {
@@ -57,6 +49,7 @@ function SchoolData() {
   const [error, setError] = useState('')
   const [className, setClassName] = useState('')
   const [subjectName, setSubjectName] = useState('')
+  const [curriculumPackId, setCurriculumPackId] = useState('')
   const [academicYear, setAcademicYear] = useState('')
   const [termName, setTermName] = useState('First Term')
   const [subjectToAdd, setSubjectToAdd] = useState('')
@@ -74,13 +67,21 @@ function SchoolData() {
   const [bulkSaveProgress, setBulkSaveProgress] = useState({ completed: 0, total: 0 })
   const [bulkSaveSummary, setBulkSaveSummary] = useState<ScoreSheetSaveSummary | null>(null)
   const [individualSavingIds, setIndividualSavingIds] = useState<ReadonlySet<string>>(() => new Set())
-  const bulkSavingRef = useRef(false)
+  const scoreSheetSaverRef = useRef(createScoreSheetSaver())
   const individualSavingIdsRef = useRef(new Set<string>())
   const scoreSheetIsCurrent = loadedSheetSelection !== null &&
     loadedSheetSelection.classId === sheetSelection.classId &&
     loadedSheetSelection.subjectId === sheetSelection.subjectId &&
     loadedSheetSelection.termId === sheetSelection.termId
+  const scoreSheetSubjects = getConfiguredSubjectsForClass(setup.subjects, setup.classSubjects, sheetSelection.classId)
+  const assignmentSubjects = getConfiguredSubjectsForClass(setup.subjects, setup.classSubjects, teacherAssignments.classId)
   const reportTemplateId = getReportTemplateId(reportClassName, reportTerm)
+  const reportClassId = setup.classes.find(item => item.name === reportClassName)?.id
+  const configuredReportSubjects = reportClassId
+    ? getConfiguredSubjectsForClass(setup.subjects, setup.classSubjects, reportClassId)
+        .map((subject, index) => ({ name: subject.name, serialNumber: index + 1 }))
+    : null
+  const reportTemplateSubjects = configuredReportSubjects ?? getReportTemplateSubjects(reportClassName)
   const termScoreCoverage = setup.scoreCoverage.filter(item => item.termId === coverageTermId)
   const classesMissingScores = termScoreCoverage
     .map(item => ({
@@ -146,7 +147,7 @@ function SchoolData() {
   async function saveIndividualScore(row: (typeof scoreRows)[number]) {
     const selected = loadedSheetSelection
     if (
-      bulkSavingRef.current ||
+      scoreSheetSaverRef.current.isSaving ||
       individualSavingIdsRef.current.has(row.enrollmentId) ||
       !selected ||
       !scoreSheetIsCurrent
@@ -174,48 +175,29 @@ function SchoolData() {
 
   async function saveAllDraftScores() {
     if (
-      bulkSavingRef.current ||
+      scoreSheetSaverRef.current.isSaving ||
       individualSavingIdsRef.current.size > 0 ||
       !scoreSheetIsCurrent ||
       !loadedSheetSelection ||
       scoreRows.length === 0
     ) return
 
-    bulkSavingRef.current = true
-    setBulkSaving(true)
-    setBulkSaveSummary(null)
-    setNotice('')
-    setError('')
     const selected = { ...loadedSheetSelection }
     const rowsToSave = scoreRows.map(row => ({ ...row }))
-    const failures: ScoreSheetSaveFailure[] = []
-    let savedCount = 0
-    setBulkSaveProgress({ completed: 0, total: rowsToSave.length })
-
-    try {
-      for (const row of rowsToSave) {
-        try {
-          await saveDraftScore({
-            data: {
-              enrollmentId: row.enrollmentId,
-              subjectId: selected.subjectId,
-              termId: selected.termId,
-              testScore: row.testScore,
-              examScore: row.examScore,
-            },
-          })
-          savedCount += 1
-        } catch (reason) {
-          failures.push({
-            studentName: `${row.firstName} ${row.lastName}`,
-            message: reason instanceof Error ? reason.message : 'The score could not be saved.',
-          })
-        }
-        setBulkSaveProgress({ completed: savedCount + failures.length, total: rowsToSave.length })
-      }
-
-      let refreshError: string | undefined
-      if (savedCount > 0) {
+    const savePromise = scoreSheetSaverRef.current.save({
+      rows: rowsToSave,
+      selection: selected,
+      save: input => saveDraftScore({ data: input }),
+      onStart: total => {
+        setBulkSaving(true)
+        setBulkSaveSummary(null)
+        setNotice('')
+        setError('')
+        setBulkSaveProgress({ completed: 0, total })
+      },
+      onProgress: (completed, total) => setBulkSaveProgress({ completed, total }),
+      refresh: async () => {
+        let refreshError: string | undefined
         try {
           const refreshedRows = await getScoreSheet({ data: selected })
           setScoreRows(refreshedRows)
@@ -229,16 +211,13 @@ function SchoolData() {
           const message = reason instanceof Error ? reason.message : 'School workspace data could not be refreshed.'
           refreshError = refreshError ? `${refreshError} ${message}` : message
         }
-      }
-
-      setBulkSaveSummary({
-        savedCount,
-        totalCount: rowsToSave.length,
-        failures,
-        refreshError,
-      })
+        return refreshError
+      },
+    })
+    if (!savePromise) return
+    try {
+      setBulkSaveSummary(await savePromise)
     } finally {
-      bulkSavingRef.current = false
       setBulkSaving(false)
     }
   }
@@ -249,6 +228,21 @@ function SchoolData() {
       setStaffList(await getSchoolStaff())
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Staff accounts could not be loaded.')
+    }
+  }
+
+  async function addSelectedCurriculumPack() {
+    setNotice('')
+    setError('')
+    try {
+      const result = await addCurriculumPack({ data: { packId: curriculumPackId } })
+      const message = result.addedCount
+        ? `Added ${result.addedCount} ${result.packName} subjects to the school catalogue.`
+        : `All ${result.packName} subjects are already in the school catalogue.`
+      await refresh(message)
+      setCurriculumPackId('')
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'The curriculum subject pack could not be added.')
     }
   }
 
@@ -336,9 +330,9 @@ function SchoolData() {
             {showReportPreview && reportTemplateId && <button className="primary" type="button" onClick={() => window.print()}><Printer size={16}/> Print template</button>}
           </div>
         </div>
-        {showReportPreview && (reportTemplateId
-          ? <JuniorReportTemplate school={setup.school} className={reportClassName} term={reportTerm}/>
-          : <p className="report-template-unavailable">A report template for {reportClassName} has not been uploaded yet. The matching JSS 3 or SS design can be added when available.</p>)}
+        {showReportPreview && (reportTemplateId && reportTemplateSubjects
+          ? <SchoolReportTemplate school={setup.school} className={reportClassName} term={reportTerm} subjects={reportTemplateSubjects}/>
+          : <p className="report-template-unavailable">A report template for {reportClassName} is not available yet.</p>)}
       </section>
 
       {isAdmin && <section className="records-section">
@@ -363,6 +357,20 @@ function SchoolData() {
             <p>Add a curriculum subject that is not already listed. You can then select it for any class.</p>
             <label>Subject name<input required maxLength={120} value={subjectName} onChange={event => setSubjectName(event.target.value)} placeholder="Subject name" /></label>
             <button className="primary" type="submit">Add subject</button>
+          </form>
+          <form className="record-form" onSubmit={event => {
+            event.preventDefault()
+            void addSelectedCurriculumPack()
+          }}>
+            <h3>Add an optional curriculum subject pack</h3>
+            <p>These are editable subject suggestions, not official grade-by-grade mappings. Adding a pack does not change any class until you select its subjects below.</p>
+            <label>Curriculum pack<select required value={curriculumPackId} onChange={event => setCurriculumPackId(event.target.value)}>
+              <option value="">Select a subject pack</option>
+              <option value="nigeria">Current Nigerian school defaults</option>
+              <option value="british">British / Cambridge suggestions</option>
+              <option value="turkish">Turkish / MEB suggestions</option>
+            </select></label>
+            <button className="secondary" type="submit" disabled={!curriculumPackId}>Add subjects to catalogue</button>
           </form>
           <form className="record-form" onSubmit={event => {
             event.preventDefault()
@@ -479,17 +487,27 @@ function SchoolData() {
           void run(() => assignTeacher({ data: teacherAssignments }), 'Teacher assignment saved.')
         }}>
           <label>Teacher account<select required value={teacherAssignments.identityUserId} onChange={event => setTeacherAssignments({ ...teacherAssignments, identityUserId: event.target.value })}><option value="">Select teacher</option>{staffList.filter(item => item.role === 'teacher').map(item => <option key={item.id} value={item.identityUserId}>{item.email}</option>)}</select></label>
-          <label>Class<select required value={teacherAssignments.classId} onChange={event => setTeacherAssignments({ ...teacherAssignments, classId: event.target.value })}><option value="">Select class</option>{setup.classes.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-          <label>Subject<select required value={teacherAssignments.subjectId} onChange={event => setTeacherAssignments({ ...teacherAssignments, subjectId: event.target.value })}><option value="">Select subject</option>{setup.subjects.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+          <label>Class<select required value={teacherAssignments.classId} onChange={event => setTeacherAssignments({ ...teacherAssignments, classId: event.target.value, subjectId: '' })}><option value="">Select class</option>{setup.classes.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+          <label>Subject<select required value={teacherAssignments.subjectId} disabled={!teacherAssignments.classId} onChange={event => setTeacherAssignments({ ...teacherAssignments, subjectId: event.target.value })}><option value="">Select subject</option>{assignmentSubjects.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
           <button className="primary" type="submit">Save assignment</button>
         </form>
       </section>}
 
       <section className="records-section">
         <h2>Enter draft scores</h2>
+        <p>Score sheets include only subjects configured for the selected class and students enrolled in that subject.</p>
         <div className="score-selection">
-          <label>Class<select value={sheetSelection.classId} disabled={bulkSaving} onChange={event => { setLoadedSheetSelection(null); setScoreRows([]); setBulkSaveSummary(null); setSheetSelection({ ...sheetSelection, classId: event.target.value }) }}><option value="">Select class</option>{setup.classes.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-          <label>Subject<select value={sheetSelection.subjectId} disabled={bulkSaving} onChange={event => { setLoadedSheetSelection(null); setScoreRows([]); setBulkSaveSummary(null); setSheetSelection({ ...sheetSelection, subjectId: event.target.value }) }}><option value="">Select subject</option>{setup.subjects.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+          <label>Class<select value={sheetSelection.classId} disabled={bulkSaving} onChange={event => {
+            const classId = event.target.value
+            const firstSubjectId = setup.subjects.find(subject =>
+              setup.classSubjects.some(link => link.classId === classId && link.subjectId === subject.id),
+            )?.id ?? ''
+            setLoadedSheetSelection(null)
+            setScoreRows([])
+            setBulkSaveSummary(null)
+            setSheetSelection({ ...sheetSelection, classId, subjectId: firstSubjectId })
+          }}><option value="">Select class</option>{setup.classes.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+          <label>Subject<select value={sheetSelection.subjectId} disabled={bulkSaving || !sheetSelection.classId} onChange={event => { setLoadedSheetSelection(null); setScoreRows([]); setBulkSaveSummary(null); setSheetSelection({ ...sheetSelection, subjectId: event.target.value }) }}><option value="">Select subject</option>{scoreSheetSubjects.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
           <label>Term<select value={sheetSelection.termId} disabled={bulkSaving} onChange={event => { setLoadedSheetSelection(null); setScoreRows([]); setBulkSaveSummary(null); setSheetSelection({ ...sheetSelection, termId: event.target.value }) }}><option value="">Select term</option>{setup.terms.map(item => <option key={item.id} value={item.id}>{item.academicYear} · {item.name}</option>)}</select></label>
           <button className="primary" onClick={() => void loadScores()} disabled={bulkSaving || !sheetSelection.classId || !sheetSelection.subjectId || !sheetSelection.termId}>Load score sheet</button>
           {scoreSheetIsCurrent && scoreRows.length > 0 && <button className="primary" type="button" onClick={() => void saveAllDraftScores()} disabled={bulkSaving || individualSavingIds.size > 0}>

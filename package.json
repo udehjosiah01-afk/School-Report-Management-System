@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "vite dev --port 3000",
     "build": "vite build",
-    "test": "node --experimental-strip-types --test src/data/workbook-calculations.test.ts src/data/school-branding.test.ts src/data/report-templates.test.ts src/server/database.test.ts"
+    "test": "node --experimental-strip-types --test src/data/workbook-calculations.test.ts src/data/school-branding.test.ts src/data/report-templates.test.ts src/data/curriculum-packs.test.ts src/data/class-subjects.test.ts src/data/score-sheet-saving.test.ts src/server/database.test.ts src/server/access-codes.test.ts"
   },
   "dependencies": {
     "@netlify/database": "^2.0.1",

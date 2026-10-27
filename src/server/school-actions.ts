@@ -1,11 +1,13 @@
 import { createServerFn } from '@tanstack/react-start'
-import { juniorSubjects, schoolClassNames, seniorSubjects } from '../data/curriculum'
+import { schoolClassNames, subjectsForClassName } from '../data/curriculum'
+import { getCurriculumPack } from '../data/curriculum-packs'
 import { isUuid } from '../data/score-validation'
 import {
   DEFAULT_ACCENT_COLOR,
   DEFAULT_MAIN_COLOR,
   validateSchoolColor,
   validateSchoolLogoDataUrl,
+  validateStudentPhotoDataUrl,
 } from '../data/school-branding'
 
 async function loadServerDependencies() {
@@ -60,6 +62,12 @@ function validateName(value: unknown) {
   return { name: requiredText(objectInput(value).name, 'Name') }
 }
 
+function validateCurriculumPack(value: unknown) {
+  const packId = requiredText(objectInput(value).packId, 'Curriculum pack', 40)
+  if (!getCurriculumPack(packId)) throw new Error('Select a supported curriculum subject pack.')
+  return { packId }
+}
+
 function validateTerm(value: unknown) {
   const input = objectInput(value)
   const name = requiredText(input.name, 'Term')
@@ -86,6 +94,7 @@ function validateStudent(value: unknown) {
     admissionNumber: requiredText(input.admissionNumber, 'Admission number', 40),
     firstName: requiredText(input.firstName, 'First name', 80),
     lastName: requiredText(input.lastName, 'Last name', 80),
+    passportPhotoDataUrl: validateStudentPhotoDataUrl(input.passportPhotoDataUrl),
     classId: requiredId(input.classId, 'Class'),
     academicYear: requiredText(input.academicYear, 'Academic year', 20),
     subjectIds,
@@ -94,10 +103,28 @@ function validateStudent(value: unknown) {
 
 function validateScoreSheet(value: unknown) {
   const input = objectInput(value)
+  const accessCode = input.accessCode
+  if (accessCode !== undefined && (typeof accessCode !== 'string' || !/^\d{4}$/.test(accessCode))) {
+    throw new Error('Enter a valid four-digit teacher access code.')
+  }
   return {
     classId: requiredId(input.classId, 'Class'),
     subjectId: requiredId(input.subjectId, 'Subject'),
     termId: requiredId(input.termId, 'Term'),
+    accessCode,
+  }
+}
+
+function validateParentAccessInput(value: unknown) {
+  const input = objectInput(value)
+  const code = input.code
+  if (typeof code !== 'string' || !/^\d{4}$/.test(code)) throw new Error('Enter a valid four-digit parent code.')
+  const schoolEmail = requiredText(input.schoolEmail, 'School contact email', 254).toLowerCase()
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(schoolEmail)) throw new Error('Enter a valid school contact email.')
+  return {
+    schoolEmail,
+    admissionNumber: requiredText(input.admissionNumber, 'Admission number', 40),
+    code,
   }
 }
 
@@ -133,6 +160,27 @@ function validateAssignment(value: unknown) {
     classId: requiredId(input.classId, 'Class'),
     subjectId: requiredId(input.subjectId, 'Subject'),
   }
+
+  function validateStudentId(value: unknown) {
+    return { studentId: requiredId(objectInput(value).studentId, 'Student') }
+  }
+
+  function validateStudentPhoto(value: unknown) {
+    const input = objectInput(value)
+    return {
+      studentId: requiredId(input.studentId, 'Student'),
+      passportPhotoDataUrl: validateStudentPhotoDataUrl(input.passportPhotoDataUrl),
+    }
+  }
+
+  function validateTeacherCodeTarget(value: unknown) {
+    const input = objectInput(value)
+    return {
+      identityUserId: requiredText(input.identityUserId, 'Teacher account ID', 120),
+      classId: requiredId(input.classId, 'Class'),
+      subjectId: requiredId(input.subjectId, 'Subject'),
+    }
+  }
 }
 
 export const registerSchool = createServerFn({ method: 'POST' })
@@ -163,17 +211,13 @@ export const registerSchool = createServerFn({ method: 'POST' })
       const classRows = await tx.insert(schoolClasses).values(
         schoolClassNames.map(name => ({ schoolId: school.id, name })),
       ).returning()
-      const curriculumNames = [...new Set([...juniorSubjects, ...seniorSubjects])]
+      const curriculumNames = [...new Set(schoolClassNames.flatMap(subjectsForClassName))]
       const subjectRows = await tx.insert(subjects).values(
         curriculumNames.map(name => ({ schoolId: school.id, name })),
       ).returning()
       const subjectByName = new Map(subjectRows.map(subject => [subject.name, subject.id]))
       const subjectRowsForClass = classRows.flatMap(schoolClass => {
-        const names = schoolClass.name === 'JSS 1' || schoolClass.name === 'JSS 2'
-          ? juniorSubjects
-          : schoolClass.name.startsWith('SS ')
-            ? seniorSubjects
-            : []
+        const names = subjectsForClassName(schoolClass.name)
         return names.map(name => ({
           schoolId: school.id,
           classId: schoolClass.id,
@@ -399,6 +443,31 @@ export const createSubject = createServerFn({ method: 'POST' })
     }).returning()
     if (!result) throw new Error('The subject could not be created.')
     return result
+  })
+
+export const addCurriculumPack = createServerFn({ method: 'POST' })
+  .validator(validateCurriculumPack)
+  .handler(async ({ data }) => {
+    const { requireStaff, getDb, subjects, eq } = await loadServerDependencies()
+    const staff = await requireStaff('admin')
+    const pack = getCurriculumPack(data.packId)
+    if (!pack) throw new Error('The selected curriculum subject pack is unavailable.')
+
+    const db = getDb()
+    const existing = await db.select({ name: subjects.name })
+      .from(subjects)
+      .where(eq(subjects.schoolId, staff.schoolId))
+    const existingNames = new Set(existing.map(subject => subject.name))
+    const missingNames = pack.subjects.filter(name => !existingNames.has(name))
+    if (!missingNames.length) return { addedCount: 0, packName: pack.name }
+
+    const inserted = await db.insert(subjects).values(missingNames.map(name => ({
+      schoolId: staff.schoolId,
+      name,
+    })))
+      .onConflictDoNothing({ target: [subjects.schoolId, subjects.name] })
+      .returning({ id: subjects.id })
+    return { addedCount: inserted.length, packName: pack.name }
   })
 
 export const saveClassSubjects = createServerFn({ method: 'POST' })

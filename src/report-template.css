@@ -29,6 +29,8 @@
 }
 
 .jss-report-card {
+  position: relative;
+  isolation: isolate;
   max-width: 1120px;
   margin: 0 auto;
   padding: 30px;
@@ -37,6 +39,24 @@
   color: #202a24;
   box-shadow: 0 8px 25px #243b2e0c;
   font-family: Arial, sans-serif;
+}
+
+.jss-report-card > :not(.jss-report-watermark) {
+  position: relative;
+  z-index: 1;
+}
+
+.jss-report-watermark {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 0;
+  width: min(45%, 420px);
+  max-height: 55%;
+  object-fit: contain;
+  opacity: .07;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
 }
 
 .jss-report-header {
@@ -91,7 +111,7 @@
 
 .jss-student-fields {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 7px 12px;
   padding: 15px 0 12px;
 }
@@ -124,7 +144,28 @@
 }
 
 .jss-field.field-full {
-  grid-column: 1 / -1;
+  grid-column: 1 / 5;
+}
+
+.jss-student-photo {
+  display: grid;
+  min-width: 72px;
+  min-height: 92px;
+  grid-column: 5;
+  grid-row: 1 / 4;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid #8b968b;
+  color: #647064;
+  font-size: 7px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.jss-student-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .jss-report-totals {

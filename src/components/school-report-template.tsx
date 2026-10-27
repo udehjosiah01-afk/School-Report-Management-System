@@ -1,5 +1,6 @@
-import { juniorSubjects } from '../data/curriculum'
 import type { ResultTerm } from '../data/workbook-calculations'
+import { getReportTermLayout } from '../data/report-templates'
+import type { ReportTemplateSubject } from '../data/report-templates'
 import '../report-template.css'
 import { BookOpen } from 'lucide-react'
 
@@ -10,6 +11,12 @@ export type ReportSchoolBranding = {
   contactEmail?: string
   motto?: string
   logoUrl?: string | null
+}
+
+export type ReportStudent = {
+  name?: string
+  admissionNumber?: string
+  passportPhotoDataUrl?: string | null
 }
 
 const gradeScale = [
@@ -52,24 +59,30 @@ function ReportTotals() {
   </section>
 }
 
-export function JuniorReportTemplate({
+export function SchoolReportTemplate({
   school,
   className = 'JSS 1',
   term = 'Third Term',
+  subjects,
+  student,
 }: {
   school?: ReportSchoolBranding | null
   className?: string
   term?: ResultTerm
-} = {}) {
+  subjects: readonly ReportTemplateSubject[]
+  student?: ReportStudent | null
+}) {
   const schoolName = school?.name || 'YOUR SCHOOL NAME'
   const schoolAddress = school?.address || 'SCHOOL ADDRESS'
-  const isThirdTerm = term === 'Third Term'
+  const termLayout = getReportTermLayout(term)
+  const isThirdTerm = termLayout === 'third'
   return <section className="jss-report-preview">
     <div className="jss-report-preview-note">
       <strong>Blank template preview</strong>
-      <span>{className} · {term} design. No student details, marks, or junior grading calculations are filled in.</span>
+      <span>{className} · {termLayout === 'third' ? 'Third Term page' : 'First / Second Term page'} ({term}). {student?.name ? 'Score results and grading calculations are not included in this preview.' : 'No student details, marks, or grading calculations are filled in.'}</span>
     </div>
-    <article className="jss-report-card" aria-label={`Blank ${schoolName} ${className} ${term} report template`}>
+    <article className="jss-report-card" aria-label={`${student?.name ? `${student.name} ` : 'Blank '}${schoolName} ${className} ${term} report template`}>
+      {school?.logoUrl && <img className="jss-report-watermark" src={school.logoUrl} alt="" aria-hidden="true"/>}
       <header className="jss-report-header">
         {school?.logoUrl
           ? <img src={school.logoUrl} alt={`${schoolName} logo`}/>
@@ -83,8 +96,13 @@ export function JuniorReportTemplate({
       </header>
 
       <section className="jss-student-fields" aria-label="Student and term information">
-        <BlankField label="NAME" className="field-full"/>
-        <BlankField label="ADMISSION NUMBER"/>
+        <div className="jss-student-photo">
+          {student?.passportPhotoDataUrl
+            ? <img src={student.passportPhotoDataUrl} alt={`${student.name ?? 'Learner'} passport photograph`}/>
+            : <span aria-label="No passport photograph">PASSPORT<br/>PHOTO</span>}
+        </div>
+        <BlankField label="NAME" className="field-full" value={student?.name}/>
+        <BlankField label="ADMISSION NUMBER" value={student?.admissionNumber}/>
         <BlankField label="CLASS"/>
         <BlankField label="TERM" value={term.toUpperCase()}/>
         <BlankField label="SESSION"/>
@@ -126,9 +144,9 @@ export function JuniorReportTemplate({
             </tr>
           </thead>
           <tbody>
-            {juniorSubjects.map((subject, index) => <tr key={subject}>
-              <td>{index + 1}</td>
-              <th scope="row">{subject.toUpperCase()}</th>
+            {subjects.map(subject => <tr key={subject.serialNumber}>
+              <td>{subject.serialNumber}</td>
+              <th scope="row">{subject.name.toUpperCase()}</th>
               {Array.from({ length: 11 }, (_, cell) => <td key={cell}/>)}
             </tr>)}
           </tbody>

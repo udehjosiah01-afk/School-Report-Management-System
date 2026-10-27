@@ -1,7 +1,7 @@
-import { demoSubjectsForClass, seniorSubjects } from './curriculum.ts'
+import { demoSubjectsForClass, workbookSeniorSubjects } from './curriculum.ts'
 
 // Curriculum fixtures for the workspace preview; no student records are included.
-export const subjects = seniorSubjects
+export const subjects = workbookSeniorSubjects
 export const classes = ['JSS 1', 'JSS 2', 'JSS 3', 'SS 1', 'SS 2', 'SS 3']
 export const subjectsByClass = Object.fromEntries(classes.map(schoolClass => [
   schoolClass,

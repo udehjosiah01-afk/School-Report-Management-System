@@ -3,7 +3,7 @@ import { useRouter } from '@tanstack/react-router'
 import { SchoolColorFields } from './school-color-fields'
 import { SchoolLogoUpload } from './school-logo-upload'
 import { updateSchoolBranding } from '../server/school-actions'
-import type { ReportSchoolBranding } from './junior-report-template'
+import type { ReportSchoolBranding } from './school-report-template'
 import { DEFAULT_ACCENT_COLOR, DEFAULT_MAIN_COLOR } from '../data/school-branding'
 
 export type SchoolBrandingProfile = ReportSchoolBranding & {
