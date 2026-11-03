@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as CbtRouteImport } from './routes/cbt'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as ParentReportRouteImport } from './routes/parent-report'
 import { Route as SchoolDataRouteImport } from './routes/school-data'
@@ -21,6 +22,11 @@ import { Route as WorkspaceRouteImport } from './routes/workspace'
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CbtRoute = CbtRouteImport.update({
+  id: '/cbt',
+  path: '/cbt',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -61,6 +67,7 @@ const WorkspaceRoute = WorkspaceRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/cbt': typeof CbtRoute
   '/login': typeof LoginRoute
   '/parent-report': typeof ParentReportRoute
   '/school-data': typeof SchoolDataRoute
@@ -71,6 +78,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/cbt': typeof CbtRoute
   '/login': typeof LoginRoute
   '/parent-report': typeof ParentReportRoute
   '/school-data': typeof SchoolDataRoute
@@ -82,6 +90,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/cbt': typeof CbtRoute
   '/login': typeof LoginRoute
   '/parent-report': typeof ParentReportRoute
   '/school-data': typeof SchoolDataRoute
@@ -94,6 +103,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/cbt'
     | '/login'
     | '/parent-report'
     | '/school-data'
@@ -104,6 +114,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/cbt'
     | '/login'
     | '/parent-report'
     | '/school-data'
@@ -114,6 +125,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/cbt'
     | '/login'
     | '/parent-report'
     | '/school-data'
@@ -125,6 +137,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  CbtRoute: typeof CbtRoute
   LoginRoute: typeof LoginRoute
   ParentReportRoute: typeof ParentReportRoute
   SchoolDataRoute: typeof SchoolDataRoute
@@ -141,6 +154,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/cbt': {
+      id: '/cbt'
+      path: '/cbt'
+      fullPath: '/cbt'
+      preLoaderRoute: typeof CbtRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -197,6 +217,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  CbtRoute: CbtRoute,
   LoginRoute: LoginRoute,
   ParentReportRoute: ParentReportRoute,
   SchoolDataRoute: SchoolDataRoute,

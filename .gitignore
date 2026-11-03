@@ -2,3 +2,7 @@ node_modules/
 dist/
 .netlify/
 .env
+.env.*
+!.env.example
+cbt-secure-backend/serviceAccountKey*.json
+cbt-secure-backend/*service-account*.json

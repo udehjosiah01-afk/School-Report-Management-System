@@ -6,6 +6,11 @@ import netlify from '@netlify/vite-plugin-tanstack-start'
 
 const config = defineConfig({
   resolve: { tsconfigPaths: true },
+  server: {
+    proxy: {
+      '/api': 'http://localhost:3001',
+    },
+  },
   plugins: [
     tailwindcss(),
     netlify({ dev: { edgeFunctions: { enabled: false } } }),

@@ -10,10 +10,9 @@ type VerifiedStudent = { fullName: string; admissionNumber: string; classLevel: 
 type ExamReview = { question: string; selectedAnswer: string; correctAnswer?: string; correct: boolean }
 type GradeResult = { score: number; total: number; review: ExamReview[] }
 
-const API_BASE = import.meta.env.VITE_CBT_API_URL ?? ''
+const API_BASE = (import.meta.env.VITE_CBT_API_URL ?? '').replace(/\/$/, '')
 const API = {
-  verify: `${API_BASE}/api/verify-student`,
-  questions: `${API_BASE}/api/questions`,
+  start: `${API_BASE}/api/start-exam`,
   grade: `${API_BASE}/api/grade`,
 }
 const EXAM = { subject: 'Mathematics', classLevel: 'SS1', term: 'First Term', durationSeconds: 30 * 60 }
@@ -36,9 +35,11 @@ function CbtPage() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [warning, setWarning] = useState('')
-  const [tabSwitches, setTabSwitches] = useState(0)
   const [confirmFinish, setConfirmFinish] = useState(false)
   const submitting = useRef(false)
+  const answersRef = useRef<Record<string, string>>({})
+  const attemptTokenRef = useRef('')
+  const tabSwitchesRef = useRef(0)
   const finished = result !== null
   const active = student !== null && questions.length > 0 && !finished
   const question = questions[current]
@@ -53,23 +54,38 @@ function CbtPage() {
     setWarning('')
     const code = studentCode.trim().toUpperCase()
     try {
-      const verified = await requestJson<{ valid: boolean; student: VerifiedStudent }>(API.verify, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ studentCode: code }),
+      const started = await requestJson<{
+        valid: boolean
+        student: VerifiedStudent
+        attemptToken: string
+        durationSeconds: number
+        questions: CbtQuestion[]
+      }>(API.start, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          studentCode: code,
+          subject: EXAM.subject,
+          classLevel: EXAM.classLevel,
+          term: EXAM.term,
+        }),
       })
-      if (!verified.valid || !verified.student) throw new Error('That student code is not valid.')
-      const loaded = await requestJson<{ questions: CbtQuestion[] }>(`${API.questions}?subject=${encodeURIComponent(EXAM.subject)}&classLevel=${encodeURIComponent(EXAM.classLevel)}&term=${encodeURIComponent(EXAM.term)}`)
-      if (!Array.isArray(loaded.questions) || loaded.questions.length === 0) throw new Error(`No ${EXAM.classLevel} ${EXAM.subject} questions are available for ${EXAM.term}.`)
-      const shuffledQuestions = loaded.questions.map(item => {
+      if (!started.valid || !started.student || !started.attemptToken) throw new Error('That student code is not valid.')
+      if (!Number.isInteger(started.durationSeconds) || started.durationSeconds <= 0) throw new Error('The CBT service returned an invalid exam duration.')
+      if (!Array.isArray(started.questions) || started.questions.length === 0) throw new Error(`No ${EXAM.classLevel} ${EXAM.subject} questions are available for ${EXAM.term}.`)
+      const shuffledQuestions = started.questions.map(item => {
         if (!item.id || typeof item.q !== 'string' || !Array.isArray(item.options) || !item.options.every(option => typeof option === 'string')) throw new Error('The CBT service returned an invalid question.')
         return { ...item, options: shuffle(item.options) }
       })
       setQuestions(shuffle(shuffledQuestions))
-      setStudent(verified.student)
+      setStudent(started.student)
       setStudentCode(code)
+      attemptTokenRef.current = started.attemptToken
       setAnswers({})
+      answersRef.current = {}
       setCurrent(0)
-      setRemaining(EXAM.durationSeconds)
-      setTabSwitches(0)
+      setRemaining(started.durationSeconds)
+      tabSwitchesRef.current = 0
       setResult(null)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'The exam could not be started.')
@@ -79,7 +95,7 @@ function CbtPage() {
   }
 
   async function submitExam() {
-    if (submitting.current || !student || questions.length === 0) return
+    if (submitting.current || !student || questions.length === 0 || !attemptTokenRef.current) return
     submitting.current = true
     setBusy(true)
     setError('')
@@ -87,11 +103,8 @@ function CbtPage() {
       const graded = await requestJson<GradeResult>(API.grade, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          studentCode,
-          subject: EXAM.subject,
-          classLevel: EXAM.classLevel,
-          term: EXAM.term,
-          answers: questions.map(item => ({ id: item.id, answer: answers[item.id] ?? '' })),
+          attemptToken: attemptTokenRef.current,
+          answers: questions.map(item => ({ id: item.id, answer: answersRef.current[item.id] ?? '' })),
         }),
       })
       if (typeof graded.score !== 'number' || typeof graded.total !== 'number' || !Array.isArray(graded.review)) throw new Error('The CBT service returned an invalid result.')
@@ -119,14 +132,12 @@ function CbtPage() {
     if (!active) return
     function onVisibilityChange() {
       if (!document.hidden) return
-      setTabSwitches(previous => {
-        const next = previous + 1
-        setWarning(next >= 3
-          ? 'The exam is being submitted after three tab switches.'
-          : `Tab switch detected (${next} of 3). Return to the exam; it will be submitted after three switches.`)
-        if (next >= 3) window.setTimeout(() => void submitExam(), 0)
-        return next
-      })
+      tabSwitchesRef.current += 1
+      const next = tabSwitchesRef.current
+      setWarning(next >= 3
+        ? 'The exam is being submitted after three tab switches.'
+        : `Tab switch detected (${next} of 3). Return to the exam; it will be submitted after three switches.`)
+      if (next >= 3) window.setTimeout(() => void submitExam(), 0)
     }
     document.addEventListener('visibilitychange', onVisibilityChange)
     return () => document.removeEventListener('visibilitychange', onVisibilityChange)
@@ -134,7 +145,9 @@ function CbtPage() {
 
   function selectAnswer(option: string) {
     if (!question) return
-    setAnswers(previous => ({ ...previous, [question.id]: option }))
+    const updatedAnswers = { ...answersRef.current, [question.id]: option }
+    answersRef.current = updatedAnswers
+    setAnswers(updatedAnswers)
   }
 
   function finish() {
@@ -152,6 +165,9 @@ function CbtPage() {
     setAnswers({})
     setResult(null)
     setStudentCode('')
+    attemptTokenRef.current = ''
+    answersRef.current = {}
+    tabSwitchesRef.current = 0
     setError('')
     setWarning('')
     setRemaining(EXAM.durationSeconds)
@@ -162,7 +178,7 @@ function CbtPage() {
     <header className="records-header cbt-header">
       <a className="records-school-brand" href="/">
         <span className="records-school-seal"><BookOpen size={22}/></span>
-        <span><strong>SiHive CBT</strong><small>School examinations · Classfolio</small></span>
+        <span><strong>SiHive CBT</strong><small>Separate computer-based examination system</small></span>
       </a>
       <a className="secondary" href="/school-data">School workspace</a>
     </header>
@@ -180,7 +196,7 @@ function CbtPage() {
           <label>Student code<input required autoComplete="off" value={studentCode} onChange={event => setStudentCode(event.target.value)} placeholder="e.g. STU101" /></label>
           <div className="cbt-exam-details"><span>{EXAM.subject}</span><span>{EXAM.classLevel}</span><span>{EXAM.term}</span><span>30 minutes</span></div>
           <button className="primary" disabled={busy}>{busy ? 'Verifying and loading exam…' : 'Start examination'}<ArrowRight size={16}/></button>
-          <p className="cbt-service-note">Exam verification, question delivery and grading require the CBT API service. Configure <code>VITE_CBT_API_URL</code> if it runs on another host.</p>
+          <p className="cbt-service-note">Exam access and grading are handled by the separate CBT service. Configure <code>VITE_CBT_API_URL</code> when the service is hosted separately.</p>
         </form>
       </section>}
 

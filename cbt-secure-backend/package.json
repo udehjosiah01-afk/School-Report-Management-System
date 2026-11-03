@@ -1,0 +1,21 @@
+{
+  "name": "cbt-secure-backend",
+  "version": "1.0.0",
+  "description": "Standalone CBT API using an isolated Firebase project",
+  "main": "index.js",
+  "scripts": {
+    "dev": "node --env-file=../.env --watch server.js",
+    "start": "node --env-file=../.env server.js",
+    "import:sample": "node --env-file=../.env firebase-question-import/import-questions.js",
+    "test": "node --test"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "express": "^5.3.0",
+    "firebase-admin": "^14.5.0"
+  }
+}
