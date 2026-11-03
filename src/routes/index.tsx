@@ -17,6 +17,7 @@ function LandingPage() {
         <nav aria-label="Site menu">
           <a href="/signup" onClick={closeLandingMenu}>School signup</a>
           <a href="/login" onClick={closeLandingMenu}>Staff login</a>
+          <a href="/parent-report" onClick={closeLandingMenu}>Parent report access</a>
           <a href="#reports" onClick={closeLandingMenu}>Report cards</a>
           <a href="#worksheets" onClick={closeLandingMenu}>Worksheets</a>
           <a href="#curriculum" onClick={closeLandingMenu}>Curriculum</a>
@@ -67,7 +68,7 @@ function LandingPage() {
         </div>
         <div className="official-area-grid">
           <article id="worksheets"><ClipboardCheck size={23}/><strong>Score sheets</strong><span>Authorized staff enter and save draft test and examination scores for students enrolled in each configured class subject.</span></article>
-          <article id="reports"><FileText size={23}/><strong>Report cards</strong><span>School-branded report layouts use the subjects configured by each school. Saved-result report generation is not connected yet.</span></article>
+          <article id="reports"><FileText size={23}/><strong>Report cards</strong><span>Administrators publish completed term scores; families access published score cards with the learner’s passcode.</span></article>
           <article><Users size={23}/><strong>School records</strong><span>Administrators manage school details, staff access, classes, subject catalogues, and student enrolments.</span></article>
         </div>
       </section>

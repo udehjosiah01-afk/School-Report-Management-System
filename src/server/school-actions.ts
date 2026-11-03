@@ -160,7 +160,18 @@ export const getSchoolSetup = createServerFn({ method: 'GET' }).handler(async ()
     db.select({ classId: studentEnrollments.classId, termId: scoreEntries.termId, academicYear: studentEnrollments.academicYear, completeCount: count() }).from(scoreEntries).innerJoin(studentEnrollments, and(eq(studentEnrollments.id, scoreEntries.enrollmentId), eq(studentEnrollments.schoolId, staff.schoolId))).innerJoin(academicTerms, and(eq(academicTerms.id, scoreEntries.termId), eq(academicTerms.schoolId, staff.schoolId), eq(academicTerms.academicYear, studentEnrollments.academicYear))).where(and(eq(scoreEntries.schoolId, staff.schoolId), isNotNull(scoreEntries.testScore), isNotNull(scoreEntries.examScore))).groupBy(studentEnrollments.classId, scoreEntries.termId, studentEnrollments.academicYear),
   ]) : [[], []]
   const scoreCoverage = termRows.flatMap(term => expected.filter(row => row.expectedCount > 0 && row.academicYear === term.academicYear && classRows.some(item => item.id === row.classId)).map(row => ({ classId: row.classId, termId: term.id, expectedCount: row.expectedCount, completeCount: complete.find(score => score.classId === row.classId && score.termId === term.id && score.academicYear === term.academicYear)?.completeCount ?? 0 })))
-  return { school: (await schoolQuery)[0] ?? null, classes: classRows, subjects: subjectRows, classSubjects: classSubjectRows, terms: termRows, enrollments: enrollmentRows, scoreCoverage }
+  return {
+    school: (await schoolQuery)[0] ?? null,
+    classes: classRows,
+    subjects: subjectRows,
+    classSubjects: classSubjectRows,
+    terms: termRows,
+    enrollments: enrollmentRows.map(enrollment => ({
+      ...enrollment,
+      passportPhotoDataUrl: isAdmin ? enrollment.passportPhotoDataUrl : null,
+    })),
+    scoreCoverage,
+  }
 })
 
 export const updateSchoolBranding = createServerFn({ method: 'POST' }).validator(validateSchool).handler(async ({ data }) => {
@@ -258,8 +269,369 @@ export const assignTeacher = createServerFn({ method: 'POST' }).validator(valida
   return assignment ?? null
 })
 
-export const getScoreSheet = createServerFn({ method: 'GET' }).validator(validateScoreSheet).handler(async ({ data }) => {
-  const { requireStaff, getDb, academicTerms, and, eq, staffAssignments, classSubjects, studentEnrollments, students, scoreEntries, studentSubjects, asc } = await loadServerDependencies()
+export const initializeSchoolAccessCodes = createServerFn({ method: 'POST' }).handler(async () => {
+  const {
+    requireStaff, getDb, staffAssignments, schoolMemberships, schoolClasses, subjects,
+    teacherSubjectAccessCodes, students, parentStudentAccessCodes, and, eq, admin,
+  } = await loadServerDependencies()
+  const staff = await requireStaff('admin')
+  const { generateAccessCode, hashAccessCode } = await import('./access-codes')
+  const db = getDb()
+
+  const initializedCodes = await db.transaction(async tx => {
+    const assignments = await tx.select({
+      identityUserId: staffAssignments.identityUserId,
+      classId: staffAssignments.classId,
+      subjectId: staffAssignments.subjectId,
+      className: schoolClasses.name,
+      subjectName: subjects.name,
+    }).from(staffAssignments)
+      .innerJoin(schoolMemberships, and(
+        eq(schoolMemberships.identityUserId, staffAssignments.identityUserId),
+        eq(schoolMemberships.schoolId, staffAssignments.schoolId),
+        eq(schoolMemberships.role, 'teacher'),
+      ))
+      .innerJoin(schoolClasses, and(
+        eq(schoolClasses.id, staffAssignments.classId),
+        eq(schoolClasses.schoolId, staff.schoolId),
+      ))
+      .innerJoin(subjects, and(
+        eq(subjects.id, staffAssignments.subjectId),
+        eq(subjects.schoolId, staff.schoolId),
+      ))
+      .where(eq(staffAssignments.schoolId, staff.schoolId))
+    const existingTeacherCodes = await tx.select({
+      identityUserId: teacherSubjectAccessCodes.identityUserId,
+      classId: teacherSubjectAccessCodes.classId,
+      subjectId: teacherSubjectAccessCodes.subjectId,
+    }).from(teacherSubjectAccessCodes).where(eq(teacherSubjectAccessCodes.schoolId, staff.schoolId))
+    const teacherCodeKeys = new Set(existingTeacherCodes.map(code =>
+      `${code.identityUserId}:${code.classId}:${code.subjectId}`,
+    ))
+    const teacherCodes: Array<{ code: string; teacherIdentityUserId: string; className: string; subjectName: string }> = []
+    for (const assignment of assignments) {
+      const key = `${assignment.identityUserId}:${assignment.classId}:${assignment.subjectId}`
+      if (teacherCodeKeys.has(key)) continue
+      const code = generateAccessCode()
+      const hashed = hashAccessCode(code)
+      const [created] = await tx.insert(teacherSubjectAccessCodes).values({
+        schoolId: staff.schoolId,
+        identityUserId: assignment.identityUserId,
+        classId: assignment.classId,
+        subjectId: assignment.subjectId,
+        ...hashed,
+      }).onConflictDoNothing().returning({ id: teacherSubjectAccessCodes.id })
+      if (created) teacherCodes.push({
+        code,
+        teacherIdentityUserId: assignment.identityUserId,
+        className: assignment.className,
+        subjectName: assignment.subjectName,
+      })
+    }
+
+    const schoolStudents = await tx.select({
+      id: students.id,
+      firstName: students.firstName,
+      lastName: students.lastName,
+      admissionNumber: students.admissionNumber,
+    }).from(students).where(eq(students.schoolId, staff.schoolId))
+    const existingParentCodes = await tx.select({
+      studentId: parentStudentAccessCodes.studentId,
+    }).from(parentStudentAccessCodes).where(eq(parentStudentAccessCodes.schoolId, staff.schoolId))
+    const parentCodeIds = new Set(existingParentCodes.map(record => record.studentId))
+    const parentCodes: Array<{ code: string; studentId: string; studentName: string; admissionNumber: string }> = []
+    for (const student of schoolStudents) {
+      if (parentCodeIds.has(student.id)) continue
+      const code = generateAccessCode()
+      const hashed = hashAccessCode(code)
+      const [created] = await tx.insert(parentStudentAccessCodes).values({
+        schoolId: staff.schoolId,
+        studentId: student.id,
+        ...hashed,
+      }).onConflictDoNothing().returning({ id: parentStudentAccessCodes.id })
+      if (created) parentCodes.push({
+        code,
+        studentId: student.id,
+        studentName: `${student.firstName} ${student.lastName}`,
+        admissionNumber: student.admissionNumber,
+      })
+    }
+    return { teacherCodes, parentCodes }
+  })
+
+  const teacherCodes = await Promise.all(initializedCodes.teacherCodes.map(async item => {
+    const identity = await admin.getUser(item.teacherIdentityUserId)
+    return { ...item, teacherEmail: identity.email ?? item.teacherIdentityUserId }
+  }))
+  return { ...initializedCodes, teacherCodes }
+})
+
+export const resetTeacherSubjectAccessCode = createServerFn({ method: 'POST' })
+  .validator(validateTeacherCodeTarget)
+  .handler(async ({ data }) => {
+    const {
+      requireStaff, getDb, schoolMemberships, staffAssignments, teacherSubjectAccessCodes, and, eq,
+    } = await loadServerDependencies()
+    const staff = await requireStaff('admin')
+    const db = getDb()
+    const [assignment] = await db.select({ id: staffAssignments.id })
+      .from(staffAssignments)
+      .innerJoin(schoolMemberships, and(
+        eq(schoolMemberships.identityUserId, data.identityUserId),
+        eq(schoolMemberships.schoolId, staff.schoolId),
+        eq(schoolMemberships.role, 'teacher'),
+      ))
+      .where(and(
+        eq(staffAssignments.schoolId, staff.schoolId),
+        eq(staffAssignments.identityUserId, data.identityUserId),
+        eq(staffAssignments.classId, data.classId),
+        eq(staffAssignments.subjectId, data.subjectId),
+      ))
+      .limit(1)
+    if (!assignment) throw new Error('The selected teacher assignment is not part of your school.')
+
+    const { generateAccessCode, hashAccessCode } = await import('./access-codes')
+    const code = generateAccessCode()
+    const hashed = hashAccessCode(code)
+    const [saved] = await db.insert(teacherSubjectAccessCodes).values({
+      schoolId: staff.schoolId,
+      identityUserId: data.identityUserId,
+      classId: data.classId,
+      subjectId: data.subjectId,
+      ...hashed,
+    }).onConflictDoUpdate({
+      target: [
+        teacherSubjectAccessCodes.schoolId,
+        teacherSubjectAccessCodes.identityUserId,
+        teacherSubjectAccessCodes.classId,
+        teacherSubjectAccessCodes.subjectId,
+      ],
+      set: { ...hashed, failedAttempts: 0, lockedUntil: null, updatedAt: new Date() },
+    }).returning({ id: teacherSubjectAccessCodes.id })
+    if (!saved) throw new Error('The teacher access code could not be reset.')
+    return { code }
+  })
+
+export const resetParentStudentAccessCode = createServerFn({ method: 'POST' })
+  .validator(validateStudentId)
+  .handler(async ({ data }) => {
+    const { requireStaff, getDb, students, parentStudentAccessCodes, and, eq } = await loadServerDependencies()
+    const staff = await requireStaff('admin')
+    const db = getDb()
+    const [student] = await db.select({ id: students.id })
+      .from(students)
+      .where(and(eq(students.id, data.studentId), eq(students.schoolId, staff.schoolId)))
+      .limit(1)
+    if (!student) throw new Error('The selected learner is not part of your school.')
+    const { generateAccessCode, hashAccessCode } = await import('./access-codes')
+    const code = generateAccessCode()
+    const hashed = hashAccessCode(code)
+    const [saved] = await db.insert(parentStudentAccessCodes).values({
+      schoolId: staff.schoolId,
+      studentId: data.studentId,
+      ...hashed,
+    }).onConflictDoUpdate({
+      target: [parentStudentAccessCodes.schoolId, parentStudentAccessCodes.studentId],
+      set: { ...hashed, failedAttempts: 0, lockedUntil: null, updatedAt: new Date() },
+    }).returning({ id: parentStudentAccessCodes.id })
+    if (!saved) throw new Error('The parent report passcode could not be reset.')
+    return { code }
+  })
+
+export const updateStudentPassportPhoto = createServerFn({ method: 'POST' })
+  .validator(validateStudentPhoto)
+  .handler(async ({ data }) => {
+    const { requireStaff, getDb, students, and, eq } = await loadServerDependencies()
+    const staff = await requireStaff('admin')
+    const [student] = await getDb().update(students)
+      .set({ passportPhotoDataUrl: data.passportPhotoDataUrl })
+      .where(and(eq(students.id, data.studentId), eq(students.schoolId, staff.schoolId)))
+      .returning({ id: students.id, passportPhotoDataUrl: students.passportPhotoDataUrl })
+    if (!student) throw new Error('The learner passport photo could not be saved.')
+    return student
+  })
+
+export const publishAcademicTerm = createServerFn({ method: 'POST' })
+  .validator(value => ({ termId: requiredId(objectInput(value).termId, 'Term') }))
+  .handler(async ({ data }) => {
+    const {
+      requireStaff, getDb, academicTerms, studentSubjects, studentEnrollments, scoreEntries,
+      and, eq, count, isNotNull,
+    } = await loadServerDependencies()
+    const staff = await requireStaff('admin')
+    const db = getDb()
+    const [term] = await db.select()
+      .from(academicTerms)
+      .where(and(eq(academicTerms.id, data.termId), eq(academicTerms.schoolId, staff.schoolId)))
+      .limit(1)
+    if (!term) throw new Error('The selected term does not belong to your school.')
+    if (term.isPublished) return { published: true }
+    const [expected] = await db.select({ total: count() })
+      .from(studentSubjects)
+      .innerJoin(studentEnrollments, and(
+        eq(studentEnrollments.id, studentSubjects.enrollmentId),
+        eq(studentEnrollments.schoolId, staff.schoolId),
+        eq(studentEnrollments.academicYear, term.academicYear),
+      ))
+      .where(eq(studentSubjects.schoolId, staff.schoolId))
+    const [completed] = await db.select({ total: count() })
+      .from(scoreEntries)
+      .innerJoin(studentEnrollments, and(
+        eq(studentEnrollments.id, scoreEntries.enrollmentId),
+        eq(studentEnrollments.schoolId, staff.schoolId),
+        eq(studentEnrollments.academicYear, term.academicYear),
+      ))
+      .where(and(
+        eq(scoreEntries.schoolId, staff.schoolId),
+        eq(scoreEntries.termId, term.id),
+        isNotNull(scoreEntries.testScore),
+        isNotNull(scoreEntries.examScore),
+      ))
+    if (!expected?.total || expected.total !== completed?.total) {
+      throw new Error(`This term cannot be published yet. Complete all ${expected?.total ?? 0} registered subject score rows first.`)
+    }
+    const [published] = await db.update(academicTerms)
+      .set({ isPublished: true })
+      .where(and(
+        eq(academicTerms.id, term.id),
+        eq(academicTerms.schoolId, staff.schoolId),
+        eq(academicTerms.isPublished, false),
+      ))
+      .returning({ id: academicTerms.id })
+    if (!published) throw new Error('The term could not be published.')
+    return { published: true }
+  })
+
+export const verifyParentReportAccess = createServerFn({ method: 'POST' })
+  .validator(validateParentAccessInput)
+  .handler(async ({ data }) => {
+    const {
+      getDb, schools, students, parentStudentAccessCodes, academicTerms, studentEnrollments,
+      schoolClasses, studentSubjects, subjects, scoreEntries, and, eq, asc,
+    } = await loadServerDependencies()
+    const db = getDb()
+    const invalidCredentials = 'The school details, admission number, or passcode could not be verified.'
+    const [school] = await db.select({
+      id: schools.id,
+      name: schools.name,
+      address: schools.address,
+      phone: schools.phone,
+      contactEmail: schools.contactEmail,
+      motto: schools.motto,
+      logoUrl: schools.logoUrl,
+      mainColor: schools.mainColor,
+      accentColor: schools.accentColor,
+    }).from(schools).where(eq(schools.contactEmail, data.schoolEmail)).limit(1)
+    if (!school) throw new Error(invalidCredentials)
+    const [student] = await db.select({
+      id: students.id,
+      admissionNumber: students.admissionNumber,
+      firstName: students.firstName,
+      lastName: students.lastName,
+      passportPhotoDataUrl: students.passportPhotoDataUrl,
+    }).from(students).where(and(
+      eq(students.schoolId, school.id),
+      eq(students.admissionNumber, data.admissionNumber),
+    )).limit(1)
+    if (!student) throw new Error(invalidCredentials)
+    const [record] = await db.select({
+      id: parentStudentAccessCodes.id,
+      codeHash: parentStudentAccessCodes.codeHash,
+      codeSalt: parentStudentAccessCodes.codeSalt,
+      failedAttempts: parentStudentAccessCodes.failedAttempts,
+      lockedUntil: parentStudentAccessCodes.lockedUntil,
+    }).from(parentStudentAccessCodes).where(and(
+      eq(parentStudentAccessCodes.schoolId, school.id),
+      eq(parentStudentAccessCodes.studentId, student.id),
+    )).limit(1)
+    if (!record) throw new Error(invalidCredentials)
+    const { failedAccessCodeState, isAccessCodeLocked, verifyAccessCode } = await import('./access-codes')
+    if (isAccessCodeLocked(record.lockedUntil)) {
+      throw new Error('This passcode is temporarily unavailable. Contact the school office.')
+    }
+    if (!verifyAccessCode(data.code, record.codeHash, record.codeSalt)) {
+      await db.update(parentStudentAccessCodes).set({
+        ...failedAccessCodeState(record.failedAttempts),
+        updatedAt: new Date(),
+      }).where(eq(parentStudentAccessCodes.id, record.id))
+      throw new Error(invalidCredentials)
+    }
+    await db.update(parentStudentAccessCodes).set({
+      failedAttempts: 0,
+      lockedUntil: null,
+      updatedAt: new Date(),
+    }).where(eq(parentStudentAccessCodes.id, record.id))
+
+    const rows = await db.select({
+      termId: academicTerms.id,
+      termName: academicTerms.name,
+      academicYear: academicTerms.academicYear,
+      className: schoolClasses.name,
+      subjectName: subjects.name,
+      testScore: scoreEntries.testScore,
+      examScore: scoreEntries.examScore,
+    }).from(academicTerms)
+      .innerJoin(studentEnrollments, and(
+        eq(studentEnrollments.schoolId, school.id),
+        eq(studentEnrollments.studentId, student.id),
+        eq(studentEnrollments.academicYear, academicTerms.academicYear),
+      ))
+      .innerJoin(schoolClasses, and(
+        eq(schoolClasses.id, studentEnrollments.classId),
+        eq(schoolClasses.schoolId, school.id),
+      ))
+      .innerJoin(studentSubjects, and(
+        eq(studentSubjects.enrollmentId, studentEnrollments.id),
+        eq(studentSubjects.schoolId, school.id),
+      ))
+      .innerJoin(subjects, and(
+        eq(subjects.id, studentSubjects.subjectId),
+        eq(subjects.schoolId, school.id),
+      ))
+      .leftJoin(scoreEntries, and(
+        eq(scoreEntries.schoolId, school.id),
+        eq(scoreEntries.enrollmentId, studentEnrollments.id),
+        eq(scoreEntries.subjectId, studentSubjects.subjectId),
+        eq(scoreEntries.termId, academicTerms.id),
+      ))
+      .where(and(
+        eq(academicTerms.schoolId, school.id),
+        eq(academicTerms.isPublished, true),
+      ))
+      .orderBy(asc(academicTerms.academicYear), asc(academicTerms.name), asc(subjects.name))
+
+    const reports = new Map<string, {
+      termName: string
+      academicYear: string
+      className: string
+      subjects: Array<{ name: string; serialNumber: number; testScore: number | null; examScore: number | null }>
+    }>()
+    for (const row of rows) {
+      let report = reports.get(row.termId)
+      if (!report) {
+        report = { termName: row.termName, academicYear: row.academicYear, className: row.className, subjects: [] }
+        reports.set(row.termId, report)
+      }
+      report.subjects.push({
+        name: row.subjectName,
+        serialNumber: report.subjects.length + 1,
+        testScore: row.testScore,
+        examScore: row.examScore,
+      })
+    }
+    return {
+      school,
+      student: {
+        name: `${student.firstName} ${student.lastName}`,
+        admissionNumber: student.admissionNumber,
+        passportPhotoDataUrl: student.passportPhotoDataUrl,
+      },
+      reports: [...reports.values()],
+    }
+  })
+
+export const getScoreSheet = createServerFn({ method: 'POST' }).validator(validateScoreSheet).handler(async ({ data }) => {
+  const { requireStaff, getDb, academicTerms, and, eq, staffAssignments, classSubjects, studentEnrollments, students, scoreEntries, studentSubjects, teacherSubjectAccessCodes, asc } = await loadServerDependencies()
   const staff = await requireStaff(); const db = getDb()
   const [term] = await db.select({ academicYear: academicTerms.academicYear, isPublished: academicTerms.isPublished }).from(academicTerms).where(and(eq(academicTerms.id, data.termId), eq(academicTerms.schoolId, staff.schoolId))).limit(1)
   if (!term) throw new Error('The selected term does not belong to your school.')
@@ -267,6 +639,35 @@ export const getScoreSheet = createServerFn({ method: 'GET' }).validator(validat
   if (staff.role !== 'admin') {
     const [assignment] = await db.select({ id: staffAssignments.id }).from(staffAssignments).where(and(eq(staffAssignments.identityUserId, staff.id), eq(staffAssignments.schoolId, staff.schoolId), eq(staffAssignments.classId, data.classId), eq(staffAssignments.subjectId, data.subjectId))).limit(1)
     if (!assignment) throw new Error('You are not assigned to this class and subject.')
+    const [codeRecord] = await db.select({
+      id: teacherSubjectAccessCodes.id,
+      codeHash: teacherSubjectAccessCodes.codeHash,
+      codeSalt: teacherSubjectAccessCodes.codeSalt,
+      failedAttempts: teacherSubjectAccessCodes.failedAttempts,
+      lockedUntil: teacherSubjectAccessCodes.lockedUntil,
+    }).from(teacherSubjectAccessCodes).where(and(
+      eq(teacherSubjectAccessCodes.schoolId, staff.schoolId),
+      eq(teacherSubjectAccessCodes.identityUserId, staff.id),
+      eq(teacherSubjectAccessCodes.classId, data.classId),
+      eq(teacherSubjectAccessCodes.subjectId, data.subjectId),
+    )).limit(1)
+    if (!data.accessCode || !codeRecord) throw new Error('Enter the four-digit access code for this class and subject.')
+    const { failedAccessCodeState, isAccessCodeLocked, verifyAccessCode } = await import('./access-codes')
+    if (isAccessCodeLocked(codeRecord.lockedUntil)) {
+      throw new Error('This subject access code is temporarily locked. Ask the administrator to reset it.')
+    }
+    if (!verifyAccessCode(data.accessCode, codeRecord.codeHash, codeRecord.codeSalt)) {
+      await db.update(teacherSubjectAccessCodes).set({
+        ...failedAccessCodeState(codeRecord.failedAttempts),
+        updatedAt: new Date(),
+      }).where(eq(teacherSubjectAccessCodes.id, codeRecord.id))
+      throw new Error('The subject access code is incorrect.')
+    }
+    await db.update(teacherSubjectAccessCodes).set({
+      failedAttempts: 0,
+      lockedUntil: null,
+      updatedAt: new Date(),
+    }).where(eq(teacherSubjectAccessCodes.id, codeRecord.id))
   }
   const [configured] = await db.select({ id: classSubjects.id }).from(classSubjects).where(and(eq(classSubjects.schoolId, staff.schoolId), eq(classSubjects.classId, data.classId), eq(classSubjects.subjectId, data.subjectId))).limit(1)
   if (!configured) throw new Error('The selected subject is not configured for this class.')

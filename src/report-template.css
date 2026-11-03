@@ -1,3 +1,51 @@
+.jss-report-card {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background: #fff;
+}
+
+.jss-report-card > :not(.jss-report-watermark) {
+  position: relative;
+  z-index: 1;
+}
+
+.jss-report-watermark {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 0;
+  width: min(45%, 420px);
+  max-height: 60%;
+  object-fit: contain;
+  opacity: .07;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+
+.jss-report-subject-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.jss-report-subject-table th,
+.jss-report-subject-table td {
+  padding: 8px 10px;
+  border: 1px solid #9aa79a;
+  text-align: center;
+}
+
+.jss-report-subject-table thead th {
+  background: #edf2eb;
+  color: #293d30;
+  font-weight: 700;
+}
+
+.jss-report-subject-table tbody th {
+  text-align: left;
+}
+
 .jss-student-photo {
   display: grid;
   place-items: center;
@@ -37,6 +85,87 @@
   flex-wrap: wrap;
   gap: 10px;
   margin-top: 8px;
+}
+
+.access-code-issued strong {
+  margin: 0 4px;
+  font-size: 1.15em;
+  letter-spacing: .12em;
+}
+
+.access-code-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.access-code-table th,
+.access-code-table td {
+  padding: 8px;
+  border-bottom: 1px solid #d8e0d7;
+  text-align: left;
+}
+
+.parent-report-page {
+  width: min(1120px, calc(100% - 36px));
+  margin: 0 auto;
+  padding: 28px 0;
+}
+
+.parent-report-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.parent-report-header h1 {
+  margin: 0;
+}
+
+.parent-report-school {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.parent-report-school img {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+}
+
+.parent-report-school p {
+  margin: 3px 0;
+}
+
+.parent-report-controls {
+  margin-bottom: 18px;
+}
+
+@media print {
+  .jss-report-watermark {
+    opacity: .07 !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  .parent-report-header,
+  .parent-report-school,
+  .parent-report-controls,
+  .parent-report-page > .form-notice,
+  .parent-report-page > .form-error,
+  .jss-report-preview-note {
+    display: none !important;
+  }
+
+  .parent-report-page {
+    width: 100%;
+    margin: 0;
+    padding: 0;
+  }
 }
 
 .school-passport-upload {
