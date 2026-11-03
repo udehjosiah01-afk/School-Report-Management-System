@@ -4,6 +4,7 @@ export type DraftScoreInput = {
   termId: string
   testScore: number | null
   examScore: number | null
+  teacherAccessCode?: string
 }
 
 const idPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -23,16 +24,24 @@ export function validateDraftScoreInput(value: unknown): DraftScoreInput {
   }
 
   const input = value as Record<string, unknown>
-  const { enrollmentId, subjectId, termId, testScore, examScore } = input
+  const { enrollmentId, subjectId, termId, testScore, examScore, teacherAccessCode } = input
   if (
     !isUuid(enrollmentId) ||
     !isUuid(subjectId) ||
     !isUuid(termId) ||
     !isScore(testScore, 40) ||
-    !isScore(examScore, 60)
+    !isScore(examScore, 60) ||
+    (teacherAccessCode !== undefined && (typeof teacherAccessCode !== 'string' || !/^\d{4}$/.test(teacherAccessCode)))
   ) {
     throw new Error('Score entry is invalid. Test scores must be 0–40 and examination scores 0–60.')
   }
 
-  return { enrollmentId, subjectId, termId, testScore, examScore }
+  return {
+    enrollmentId,
+    subjectId,
+    termId,
+    testScore,
+    examScore,
+    ...(teacherAccessCode === undefined ? {} : { teacherAccessCode }),
+  }
 }

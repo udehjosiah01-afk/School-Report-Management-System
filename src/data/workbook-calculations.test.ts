@@ -6,13 +6,13 @@ import {
   calculateCompetitionRanks,
   calculateOverallAverage,
   calculateOverallGrade,
+  calculateWorkbookReportResults,
   calculateSubjectTotal,
   calculateSubjectGrade,
   calculateSubjectRemark,
   calculateThirdTermAverage,
   EXAM_MAX,
   isAssessmentScoreValid,
-  OVERALL_SUBJECT_DIVISOR,
   ordinal,
   TEST_MAX,
 } from './workbook-calculations.ts'
@@ -66,9 +66,11 @@ test('draft score validation accepts nullable scores within the workbook limits'
   )
 })
 
-test('overall averages use the workbook divisor of ten', () => {
-  assert.equal(OVERALL_SUBJECT_DIVISOR, 10)
-  assert.equal(calculateOverallAverage(Array(13).fill(80)), 104)
+test('overall averages use the number of selected subjects as the divisor', () => {
+  assert.equal(calculateOverallAverage(Array(10).fill(80)), 80)
+  assert.equal(calculateOverallAverage(Array(11).fill(80)), 80)
+  assert.equal(calculateOverallAverage([80, 90, 100]), 90)
+  assert.throws(() => calculateOverallAverage([]), /At least one selected subject/)
 })
 
 test('first and second term subject grades follow workbook cutoffs', () => {
@@ -124,6 +126,56 @@ test('third term subject results use the separate descriptive threshold scale', 
 test('third term subject averages round to one decimal place', () => {
   assert.equal(calculateThirdTermAverage(80, 81, 80), 80.3)
   assert.equal(calculateThirdTermAverage(80, 81, 81), 80.7)
+  assert.equal(calculateThirdTermAverage(null, 81, 80), 80.5)
+  assert.equal(calculateThirdTermAverage(null, null, null), null)
+})
+
+test('workbook report calculations use selected subjects, class positions, and term rules', () => {
+  const firstTerm = calculateWorkbookReportResults('First Term', [
+    {
+      studentId: 'student-a',
+      subjects: [
+        { subjectId: 'math', name: 'Mathematics', terms: { 'First Term': { testScore: 35, examScore: 50 } } },
+        { subjectId: 'english', name: 'English Language', terms: { 'First Term': { testScore: 30, examScore: 50 } } },
+      ],
+    },
+    {
+      studentId: 'student-b',
+      subjects: [
+        { subjectId: 'math', name: 'Mathematics', terms: { 'First Term': { testScore: 20, examScore: 40 } } },
+        { subjectId: 'english', name: 'English Language', terms: { 'First Term': { testScore: 20, examScore: 40 } } },
+      ],
+    },
+  ])
+  assert.equal(firstTerm[0].subjects[0].grade, 'A')
+  assert.equal(firstTerm[0].subjects[0].remark, 'DISTINCTION')
+  assert.equal(firstTerm[0].subjects[0].classAverage, 72.5)
+  assert.equal(firstTerm[0].subjects[0].position, 1)
+  assert.equal(firstTerm[1].subjects[0].position, 2)
+  assert.equal(firstTerm[0].totalMarksObtained, 165)
+  assert.equal(firstTerm[0].totalMarksObtainable, 200)
+  assert.equal(firstTerm[0].average, 82.5)
+  assert.equal(firstTerm[0].position, 1)
+
+  const thirdTerm = calculateWorkbookReportResults('Third Term', [
+    {
+      studentId: 'student-a',
+      subjects: [{
+        subjectId: 'math',
+        name: 'Mathematics',
+        terms: {
+          'First Term': { testScore: 35, examScore: 45 },
+          'Second Term': { testScore: 36, examScore: 45 },
+          'Third Term': { testScore: 37, examScore: 45 },
+        },
+      }],
+    },
+  ])
+  assert.equal(thirdTerm[0].subjects[0].firstTermTotal, 80)
+  assert.equal(thirdTerm[0].subjects[0].secondTermTotal, 81)
+  assert.equal(thirdTerm[0].subjects[0].average, 81)
+  assert.equal(thirdTerm[0].subjects[0].grade, 'DISTINCTION')
+  assert.equal(thirdTerm[0].totalMarksObtained, 81)
 })
 
 test('overall grades use the workbook aggregate scale', () => {

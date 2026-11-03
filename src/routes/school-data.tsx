@@ -4,7 +4,10 @@ import { Printer } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { getCurrentStaff } from '../server/auth'
 import { SchoolReportTemplate } from '../components/school-report-template'
+import { SchoolAccessControls } from '../components/school-access-controls'
+import { StudentPassportUpload } from '../components/student-passport-upload'
 import { getConfiguredSubjectsForClass } from '../data/class-subjects'
+import { isSeniorSecondaryClassName, isValidSeniorStudentSubjectCount } from '../data/curriculum'
 import { getReportTemplateId, getReportTemplateSubjects } from '../data/report-templates'
 import { isResultTerm } from '../data/workbook-calculations'
 import type { ResultTerm } from '../data/workbook-calculations'
@@ -22,8 +25,13 @@ import {
   getSchoolStaff,
   getSchoolSetup,
   getScoreSheet,
+  initializeSchoolAccessCodes,
+  publishAcademicTerm,
+  resetParentStudentAccessCode,
+  resetTeacherSubjectAccessCode,
   saveClassSubjects,
   setStaffRole,
+  updateStudentPassportPhoto,
 } from '../server/school-actions'
 import { saveDraftScore } from '../server/score-actions'
 
@@ -54,14 +62,17 @@ function SchoolData() {
   const [termName, setTermName] = useState('First Term')
   const [subjectToAdd, setSubjectToAdd] = useState('')
   const [coverageTermId, setCoverageTermId] = useState(() => setup.terms.at(-1)?.id ?? '')
-  const [student, setStudent] = useState({ admissionNumber: '', firstName: '', lastName: '', classId: '', subjectIds: [] as string[] })
+  const [student, setStudent] = useState({ admissionNumber: '', firstName: '', lastName: '', passportPhotoDataUrl: null as string | null, classId: '', subjectIds: [] as string[] })
   const [teacherAssignments, setTeacherAssignments] = useState({ identityUserId: '', classId: '', subjectId: '' })
   const [staffEmail, setStaffEmail] = useState('')
   const [staffList, setStaffList] = useState<Awaited<ReturnType<typeof getSchoolStaff>>>([])
   const [staffRole, setStaffRoleValue] = useState({ membershipId: '', role: 'teacher' })
   const [classSubjectSelection, setClassSubjectSelection] = useState({ classId: '', subjectIds: [] as string[] })
   const [sheetSelection, setSheetSelection] = useState({ classId: '', subjectId: '', termId: '' })
-  const [loadedSheetSelection, setLoadedSheetSelection] = useState<typeof sheetSelection | null>(null)
+  const [teacherAccessCode, setTeacherAccessCode] = useState('')
+  const [loadedSheetSelection, setLoadedSheetSelection] = useState<(typeof sheetSelection & { teacherAccessCode: string }) | null>(null)
+  const [issuedAccessCodes, setIssuedAccessCodes] = useState<Array<{ type: string; label: string; code: string }>>([])
+  const accessCodeInitializationRef = useRef(false)
   const [scoreRows, setScoreRows] = useState<Awaited<ReturnType<typeof getScoreSheet>>>([])
   const [bulkSaving, setBulkSaving] = useState(false)
   const [bulkSaveProgress, setBulkSaveProgress] = useState({ completed: 0, total: 0 })
@@ -72,9 +83,13 @@ function SchoolData() {
   const scoreSheetIsCurrent = loadedSheetSelection !== null &&
     loadedSheetSelection.classId === sheetSelection.classId &&
     loadedSheetSelection.subjectId === sheetSelection.subjectId &&
-    loadedSheetSelection.termId === sheetSelection.termId
+    loadedSheetSelection.termId === sheetSelection.termId &&
+    loadedSheetSelection.teacherAccessCode === (isAdmin ? '' : teacherAccessCode)
   const scoreSheetSubjects = getConfiguredSubjectsForClass(setup.subjects, setup.classSubjects, sheetSelection.classId)
   const assignmentSubjects = getConfiguredSubjectsForClass(setup.subjects, setup.classSubjects, teacherAssignments.classId)
+  const enrollmentClassName = setup.classes.find(item => item.id === student.classId)?.name ?? ''
+  const isSeniorEnrollment = isSeniorSecondaryClassName(enrollmentClassName)
+  const seniorSubjectCountValid = !isSeniorEnrollment || isValidSeniorStudentSubjectCount(student.subjectIds.length)
   const reportTemplateId = getReportTemplateId(reportClassName, reportTerm)
   const reportClassId = setup.classes.find(item => item.name === reportClassName)?.id
   const configuredReportSubjects = reportClassId
@@ -90,6 +105,34 @@ function SchoolData() {
       missingCount: Math.max(0, item.expectedCount - item.completeCount),
     }))
     .filter(item => item.missingCount > 0)
+
+  async function issueMissingAccessCodes() {
+    try {
+      const generated = await initializeSchoolAccessCodes()
+      const newCodes = [
+        ...generated.teacherCodes.map(item => ({
+          type: 'Teacher',
+          label: `${item.className} · ${item.subjectName} · ${item.teacherEmail}`,
+          code: item.code,
+        })),
+        ...generated.parentCodes.map(item => ({
+          type: 'Parent',
+          label: `${item.studentName} · ${item.admissionNumber}`,
+          code: item.code,
+        })),
+      ]
+      if (newCodes.length) setIssuedAccessCodes(current => [...current, ...newCodes])
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Missing school access codes could not be generated.')
+    }
+  }
+
+  useEffect(() => {
+    if (isAdmin && !accessCodeInitializationRef.current) {
+      accessCodeInitializationRef.current = true
+      void issueMissingAccessCodes()
+    }
+  }, [isAdmin])
 
   useEffect(() => {
     if (!student.classId && setup.classes[0]) {
@@ -114,6 +157,7 @@ function SchoolData() {
   async function refresh(message: string) {
     setNotice(message)
     setError('')
+    if (isAdmin) await issueMissingAccessCodes()
     await router.invalidate()
   }
 
@@ -136,9 +180,10 @@ function SchoolData() {
     setLoadedSheetSelection(null)
     try {
       const selected = { ...sheetSelection }
-      const rows = await getScoreSheet({ data: selected })
+      const code = isAdmin ? '' : teacherAccessCode
+      const rows = await getScoreSheet({ data: { ...selected, accessCode: code || undefined } })
       setScoreRows(rows)
-      setLoadedSheetSelection(selected)
+      setLoadedSheetSelection({ ...selected, teacherAccessCode: code })
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'The score sheet could not be loaded.')
     }
@@ -163,6 +208,7 @@ function SchoolData() {
             termId: selected.termId,
             testScore: row.testScore,
             examScore: row.examScore,
+            teacherAccessCode: isAdmin ? undefined : selected.teacherAccessCode,
           },
         }),
         `Draft saved for ${row.firstName} ${row.lastName}.`,
@@ -186,7 +232,11 @@ function SchoolData() {
     const rowsToSave = scoreRows.map(row => ({ ...row }))
     const savePromise = scoreSheetSaverRef.current.save({
       rows: rowsToSave,
-      selection: selected,
+      selection: {
+        subjectId: selected.subjectId,
+        termId: selected.termId,
+        teacherAccessCode: isAdmin ? undefined : selected.teacherAccessCode,
+      },
       save: input => saveDraftScore({ data: input }),
       onStart: total => {
         setBulkSaving(true)
@@ -199,7 +249,12 @@ function SchoolData() {
       refresh: async () => {
         let refreshError: string | undefined
         try {
-          const refreshedRows = await getScoreSheet({ data: selected })
+          const refreshedRows = await getScoreSheet({ data: {
+            classId: selected.classId,
+            subjectId: selected.subjectId,
+            termId: selected.termId,
+            accessCode: selected.teacherAccessCode || undefined,
+          } })
           setScoreRows(refreshedRows)
           setLoadedSheetSelection(selected)
         } catch (reason) {
@@ -268,6 +323,18 @@ function SchoolData() {
       <p>Records entered here are saved in your Netlify Database. Draft scores are restricted to assigned staff and unpublished terms.</p>
       {notice && <p className="form-notice" role="status">{notice}</p>}
       {error && <p className="form-error" role="alert">{error}</p>}
+      {isAdmin && issuedAccessCodes.length > 0 && <section className="records-section" aria-label="Newly generated access codes">
+        <div className="section-heading">
+          <div><h2>New access codes — copy now</h2><p>These codes are shown only when first generated. Share each code privately with its teacher or family.</p></div>
+          <button type="button" className="secondary" onClick={() => setIssuedAccessCodes([])}>Hide codes</button>
+        </div>
+        <div className="records-table-wrap"><table className="records-table access-code-table">
+          <thead><tr><th>For</th><th>Account / learner</th><th>One-time code</th></tr></thead>
+          <tbody>{issuedAccessCodes.map((item, index) => <tr key={`${item.type}-${item.label}-${index}`}>
+            <td>{item.type}</td><td>{item.label}</td><td><strong>{item.code}</strong></td>
+          </tr>)}</tbody>
+        </table></div>
+      </section>}
 
       <section className="school-dashboard" aria-label="School activity overview">
         <article className="school-dashboard-card">
@@ -428,6 +495,19 @@ function SchoolData() {
           </div>
           <button className="primary" type="submit" disabled={!classSubjectSelection.classId}>Save class curriculum</button>
         </form>
+        <div className="term-publication-list">
+          <h3>Publish completed term results</h3>
+          <p>Publishing locks draft scores and makes that term’s saved scores available to parents with the learner’s passcode. This does not calculate grades, remarks, or rankings.</p>
+          {setup.terms.length
+            ? <ul>{setup.terms.map(item => <li key={item.id}>
+                <span><strong>{item.academicYear} · {item.name}</strong> · {item.isPublished ? 'Published' : 'Draft'}</span>
+                {!item.isPublished && <button className="secondary" type="button" onClick={() => void run(
+                  () => publishAcademicTerm({ data: { termId: item.id } }),
+                  `${item.academicYear} ${item.name} results published.`,
+                )}>Publish term</button>}
+              </li>)}</ul>
+            : <p>Create an academic term before publishing results.</p>}
+        </div>
       </section>}
 
       {isAdmin && <section className="records-section">
@@ -436,7 +516,7 @@ function SchoolData() {
           event.preventDefault()
           void run(() => createStudent({ data: { ...student, academicYear } }), 'Student enrollment saved.')
             .then(saved => {
-              if (saved) setStudent(current => ({ ...current, admissionNumber: '', firstName: '', lastName: '', subjectIds: [] }))
+              if (saved) setStudent(current => ({ ...current, admissionNumber: '', firstName: '', lastName: '', passportPhotoDataUrl: null, subjectIds: [] }))
             })
         }}>
           <label>Admission number<input required maxLength={40} value={student.admissionNumber} onChange={event => setStudent({ ...student, admissionNumber: event.target.value })} /></label>
@@ -451,8 +531,14 @@ function SchoolData() {
             })
           }}><option value="">Select class</option>{setup.classes.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
           <label>Academic year<input required maxLength={20} value={academicYear} onChange={event => setAcademicYear(event.target.value)} placeholder="2025 / 2026" /></label>
-          <fieldset className="subject-registration"><legend>Subjects registered for this student</legend>{setup.subjects.filter(item => setup.classSubjects.some(link => link.classId === student.classId && link.subjectId === item.id)).map(item => <label key={item.id}><input type="checkbox" checked={student.subjectIds.includes(item.id)} onChange={event => setStudent(current => ({ ...current, subjectIds: event.target.checked ? [...current.subjectIds, item.id] : current.subjectIds.filter(id => id !== item.id) }))} />{item.name}</label>)}{!student.subjectIds.length && <span>Configure subjects for this class before enrolling students.</span>}</fieldset>
-          <button className="primary" type="submit" disabled={!setup.classes.length || !student.subjectIds.length}>Save student</button>
+          <StudentPassportUpload
+          photoDataUrl={student.passportPhotoDataUrl}
+          studentName={`${student.firstName} ${student.lastName}`.trim()}
+          onChange={passportPhotoDataUrl => setStudent(current => ({ ...current, passportPhotoDataUrl }))}
+          />
+          <fieldset className="subject-registration"><legend>Subjects registered for this student</legend>{setup.subjects.filter(item => setup.classSubjects.some(link => link.classId === student.classId && link.subjectId === item.id)).map(item => <label key={item.id}><input type="checkbox" checked={student.subjectIds.includes(item.id)} disabled={isSeniorEnrollment && !student.subjectIds.includes(item.id) && student.subjectIds.length >= 11} onChange={event => setStudent(current => ({ ...current, subjectIds: event.target.checked ? [...current.subjectIds, item.id] : current.subjectIds.filter(id => id !== item.id) }))} />{item.name}</label>)}{!student.subjectIds.length && <span>Configure subjects for this class before enrolling students.</span>}</fieldset>
+          {isSeniorEnrollment && <p className={seniorSubjectCountValid ? 'form-notice' : 'form-error'} role="status">Senior secondary learners must have 10 or 11 selected subjects. The result average will use this selection count as its divisor. Currently selected: {student.subjectIds.length}.</p>}
+          <button className="primary" type="submit" disabled={!setup.classes.length || !student.subjectIds.length || !seniorSubjectCountValid}>Save student</button>
         </form>
       </section>}
 
@@ -491,6 +577,13 @@ function SchoolData() {
           <label>Subject<select required value={teacherAssignments.subjectId} disabled={!teacherAssignments.classId} onChange={event => setTeacherAssignments({ ...teacherAssignments, subjectId: event.target.value })}><option value="">Select subject</option>{assignmentSubjects.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
           <button className="primary" type="submit">Save assignment</button>
         </form>
+        <SchoolAccessControls
+          teacherIdentityUserId={teacherAssignments.identityUserId}
+          teacherName={staffList.find(item => item.identityUserId === teacherAssignments.identityUserId)?.email}
+          classId={teacherAssignments.classId}
+          subjectId={teacherAssignments.subjectId}
+          onResetTeacherCode={payload => resetTeacherSubjectAccessCode({ data: payload })}
+        />
       </section>}
 
       <section className="records-section">
@@ -503,12 +596,19 @@ function SchoolData() {
               setup.classSubjects.some(link => link.classId === classId && link.subjectId === subject.id),
             )?.id ?? ''
             setLoadedSheetSelection(null)
+            setTeacherAccessCode('')
             setScoreRows([])
             setBulkSaveSummary(null)
             setSheetSelection({ ...sheetSelection, classId, subjectId: firstSubjectId })
           }}><option value="">Select class</option>{setup.classes.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-          <label>Subject<select value={sheetSelection.subjectId} disabled={bulkSaving || !sheetSelection.classId} onChange={event => { setLoadedSheetSelection(null); setScoreRows([]); setBulkSaveSummary(null); setSheetSelection({ ...sheetSelection, subjectId: event.target.value }) }}><option value="">Select subject</option>{scoreSheetSubjects.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-          <label>Term<select value={sheetSelection.termId} disabled={bulkSaving} onChange={event => { setLoadedSheetSelection(null); setScoreRows([]); setBulkSaveSummary(null); setSheetSelection({ ...sheetSelection, termId: event.target.value }) }}><option value="">Select term</option>{setup.terms.map(item => <option key={item.id} value={item.id}>{item.academicYear} · {item.name}</option>)}</select></label>
+          <label>Subject<select value={sheetSelection.subjectId} disabled={bulkSaving || !sheetSelection.classId} onChange={event => { setLoadedSheetSelection(null); setTeacherAccessCode(''); setScoreRows([]); setBulkSaveSummary(null); setSheetSelection({ ...sheetSelection, subjectId: event.target.value }) }}><option value="">Select subject</option>{scoreSheetSubjects.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+          <label>Term<select value={sheetSelection.termId} disabled={bulkSaving} onChange={event => { setLoadedSheetSelection(null); setTeacherAccessCode(''); setScoreRows([]); setBulkSaveSummary(null); setSheetSelection({ ...sheetSelection, termId: event.target.value }) }}><option value="">Select term</option>{setup.terms.map(item => <option key={item.id} value={item.id}>{item.academicYear} · {item.name}</option>)}</select></label>
+          {!isAdmin && <label>Four-digit subject access code<input required type="password" inputMode="numeric" pattern="[0-9]{4}" maxLength={4} autoComplete="one-time-code" value={teacherAccessCode} onChange={event => {
+            setLoadedSheetSelection(null)
+            setScoreRows([])
+            setBulkSaveSummary(null)
+            setTeacherAccessCode(event.target.value.replace(/\D/g, '').slice(0, 4))
+          }}/></label>}
           <button className="primary" onClick={() => void loadScores()} disabled={bulkSaving || !sheetSelection.classId || !sheetSelection.subjectId || !sheetSelection.termId}>Load score sheet</button>
           {scoreSheetIsCurrent && scoreRows.length > 0 && <button className="primary" type="button" onClick={() => void saveAllDraftScores()} disabled={bulkSaving || individualSavingIds.size > 0}>
             {bulkSaving ? 'Saving score sheet…' : 'Save all draft scores'}
@@ -544,8 +644,28 @@ function SchoolData() {
       <section className="records-section">
         <h2>Current roster</h2>
         {setup.enrollments.length > 0
-          ? <div className="records-table-wrap"><table className="records-table"><thead><tr><th>Student</th><th>Admission no.</th><th>Class</th><th>Academic year</th></tr></thead><tbody>
-            {setup.enrollments.map(item => <tr key={item.id}><td>{item.firstName} {item.lastName}</td><td>{item.admissionNumber}</td><td>{item.className}</td><td>{item.academicYear}</td></tr>)}
+          ? <div className="records-table-wrap"><table className="records-table"><thead><tr>
+              <th>Student</th><th>Admission no.</th><th>Class</th><th>Academic year</th>
+              {isAdmin && <><th>Passport photograph</th><th>Parent report code</th></>}
+            </tr></thead><tbody>
+            {setup.enrollments.map(item => <tr key={item.id}>
+              <td>{item.firstName} {item.lastName}</td><td>{item.admissionNumber}</td><td>{item.className}</td><td>{item.academicYear}</td>
+              {isAdmin && <>
+                <td><StudentPassportUpload
+                  photoDataUrl={item.passportPhotoDataUrl}
+                  studentName={`${item.firstName} ${item.lastName}`}
+                  onChange={passportPhotoDataUrl => void run(
+                    () => updateStudentPassportPhoto({ data: { studentId: item.studentId, passportPhotoDataUrl } }),
+                    `Passport photo updated for ${item.firstName} ${item.lastName}.`,
+                  )}
+                /></td>
+                <td><SchoolAccessControls
+                  studentId={item.studentId}
+                  studentName={`${item.firstName} ${item.lastName}`}
+                  onResetParentCode={payload => resetParentStudentAccessCode({ data: payload })}
+                /></td>
+              </>}
+            </tr>)}
           </tbody></table></div>
           : <p className="records-empty">No student enrollments are available yet.</p>}
       </section>

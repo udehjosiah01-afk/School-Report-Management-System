@@ -19,7 +19,7 @@ export type ScoreSheetSaveSummary = {
 
 type ScoreSheetSaverOptions = {
   rows: ScoreSheetSaveRow[]
-  selection: Pick<DraftScoreInput, 'subjectId' | 'termId'>
+  selection: Pick<DraftScoreInput, 'subjectId' | 'termId' | 'teacherAccessCode'>
   save: (input: DraftScoreInput) => Promise<unknown>
   onStart: (total: number) => void
   onProgress: (completed: number, total: number) => void
@@ -52,6 +52,9 @@ export function createScoreSheetSaver() {
               termId: options.selection.termId,
               testScore: row.testScore,
               examScore: row.examScore,
+              ...(options.selection.teacherAccessCode === undefined
+                ? {}
+                : { teacherAccessCode: options.selection.teacherAccessCode }),
             })
             savedCount += 1
           } catch (reason) {
