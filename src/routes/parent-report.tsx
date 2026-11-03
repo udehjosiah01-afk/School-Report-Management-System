@@ -82,6 +82,7 @@ function ParentReportPage() {
               academicYear={selectedReport.academicYear}
               subjects={selectedReport.subjects}
               student={report.student}
+              summary={selectedReport.summary}
               publishedReport
             />}
           </>}

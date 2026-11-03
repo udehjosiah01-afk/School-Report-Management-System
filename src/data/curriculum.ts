@@ -74,6 +74,14 @@ export const workbookSeniorSubjects = [
 
 export const schoolClassNames = ['JSS 1', 'JSS 2', 'JSS 3', 'SS 1', 'SS 2', 'SS 3']
 
+export function isSeniorSecondaryClassName(className: string) {
+  return /^(?:SS|SSS)\s*[1-3]$/i.test(className.trim())
+}
+
+export function isValidSeniorStudentSubjectCount(subjectCount: number) {
+  return subjectCount >= 10 && subjectCount <= 11
+}
+
 export function subjectsForClassName(className: string) {
   if (className === 'JSS 1' || className === 'JSS 2') return juniorSubjects
   if (className === 'JSS 3') return jss3Subjects

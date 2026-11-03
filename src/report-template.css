@@ -29,6 +29,11 @@
   font-size: 13px;
 }
 
+.jss-report-grid {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
 .jss-report-subject-table th,
 .jss-report-subject-table td {
   padding: 8px 10px;
@@ -146,6 +151,15 @@
 }
 
 @media print {
+  .jss-report-subject-table {
+    font-size: 8px;
+  }
+
+  .jss-report-subject-table th,
+  .jss-report-subject-table td {
+    padding: 3px 4px;
+  }
+
   .jss-report-watermark {
     opacity: .07 !important;
     print-color-adjust: exact;

@@ -7,6 +7,7 @@ import { SchoolReportTemplate } from '../components/school-report-template'
 import { SchoolAccessControls } from '../components/school-access-controls'
 import { StudentPassportUpload } from '../components/student-passport-upload'
 import { getConfiguredSubjectsForClass } from '../data/class-subjects'
+import { isSeniorSecondaryClassName, isValidSeniorStudentSubjectCount } from '../data/curriculum'
 import { getReportTemplateId, getReportTemplateSubjects } from '../data/report-templates'
 import { isResultTerm } from '../data/workbook-calculations'
 import type { ResultTerm } from '../data/workbook-calculations'
@@ -86,6 +87,9 @@ function SchoolData() {
     loadedSheetSelection.teacherAccessCode === (isAdmin ? '' : teacherAccessCode)
   const scoreSheetSubjects = getConfiguredSubjectsForClass(setup.subjects, setup.classSubjects, sheetSelection.classId)
   const assignmentSubjects = getConfiguredSubjectsForClass(setup.subjects, setup.classSubjects, teacherAssignments.classId)
+  const enrollmentClassName = setup.classes.find(item => item.id === student.classId)?.name ?? ''
+  const isSeniorEnrollment = isSeniorSecondaryClassName(enrollmentClassName)
+  const seniorSubjectCountValid = !isSeniorEnrollment || isValidSeniorStudentSubjectCount(student.subjectIds.length)
   const reportTemplateId = getReportTemplateId(reportClassName, reportTerm)
   const reportClassId = setup.classes.find(item => item.name === reportClassName)?.id
   const configuredReportSubjects = reportClassId
@@ -532,8 +536,9 @@ function SchoolData() {
           studentName={`${student.firstName} ${student.lastName}`.trim()}
           onChange={passportPhotoDataUrl => setStudent(current => ({ ...current, passportPhotoDataUrl }))}
           />
-          <fieldset className="subject-registration"><legend>Subjects registered for this student</legend>{setup.subjects.filter(item => setup.classSubjects.some(link => link.classId === student.classId && link.subjectId === item.id)).map(item => <label key={item.id}><input type="checkbox" checked={student.subjectIds.includes(item.id)} onChange={event => setStudent(current => ({ ...current, subjectIds: event.target.checked ? [...current.subjectIds, item.id] : current.subjectIds.filter(id => id !== item.id) }))} />{item.name}</label>)}{!student.subjectIds.length && <span>Configure subjects for this class before enrolling students.</span>}</fieldset>
-          <button className="primary" type="submit" disabled={!setup.classes.length || !student.subjectIds.length}>Save student</button>
+          <fieldset className="subject-registration"><legend>Subjects registered for this student</legend>{setup.subjects.filter(item => setup.classSubjects.some(link => link.classId === student.classId && link.subjectId === item.id)).map(item => <label key={item.id}><input type="checkbox" checked={student.subjectIds.includes(item.id)} disabled={isSeniorEnrollment && !student.subjectIds.includes(item.id) && student.subjectIds.length >= 11} onChange={event => setStudent(current => ({ ...current, subjectIds: event.target.checked ? [...current.subjectIds, item.id] : current.subjectIds.filter(id => id !== item.id) }))} />{item.name}</label>)}{!student.subjectIds.length && <span>Configure subjects for this class before enrolling students.</span>}</fieldset>
+          {isSeniorEnrollment && <p className={seniorSubjectCountValid ? 'form-notice' : 'form-error'} role="status">Senior secondary learners must have 10 or 11 selected subjects. The result average will use this selection count as its divisor. Currently selected: {student.subjectIds.length}.</p>}
+          <button className="primary" type="submit" disabled={!setup.classes.length || !student.subjectIds.length || !seniorSubjectCountValid}>Save student</button>
         </form>
       </section>}
 

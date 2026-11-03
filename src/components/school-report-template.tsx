@@ -1,5 +1,6 @@
 import { BookOpen } from 'lucide-react'
-import type { ResultTerm } from '../data/workbook-calculations'
+import { ordinal } from '../data/workbook-calculations'
+import type { CalculatedReportStudent, ResultTerm } from '../data/workbook-calculations'
 import { getReportTermLayout } from '../data/report-templates'
 import type { ReportTemplateSubject } from '../data/report-templates'
 import '../report-template.css'
@@ -23,12 +24,13 @@ function BlankField({ label, value = '' }: { label: string; value?: string }) {
   return <div className="jss-field"><span>{label}</span>{value ? <strong>{value}</strong> : <i aria-hidden="true"/>}</div>
 }
 
-function ReportTotals() {
+function ReportTotals({ summary }: { summary?: Pick<CalculatedReportStudent, 'totalMarksObtained' | 'totalMarksObtainable' | 'average' | 'grade' | 'position'> }) {
   return <section className="jss-report-totals" aria-label="Report totals">
-    <BlankField label="TOTAL MARKS OBTAINED"/>
-    <BlankField label="TOTAL MARKS OBTAINABLE"/>
-    <BlankField label="AVERAGE"/>
-    <BlankField label="GRADE"/>
+    <BlankField label="TOTAL MARKS OBTAINED" value={summary?.totalMarksObtained?.toFixed(1) ?? ''}/>
+    <BlankField label="TOTAL MARKS OBTAINABLE" value={summary?.totalMarksObtainable.toString() ?? ''}/>
+    <BlankField label="AVERAGE" value={summary?.average?.toFixed(2) ?? ''}/>
+    <BlankField label="GRADE" value={summary?.grade ?? ''}/>
+    {summary?.position !== null && summary?.position !== undefined && <BlankField label="POSITION IN CLASS" value={ordinal(summary.position)}/>}
   </section>
 }
 
@@ -39,6 +41,7 @@ export function SchoolReportTemplate({
   academicYear,
   subjects,
   student,
+  summary,
   publishedReport = false,
 }: {
   school?: ReportSchoolBranding | null
@@ -47,6 +50,7 @@ export function SchoolReportTemplate({
   academicYear?: string
   subjects: readonly ReportTemplateSubject[]
   student?: ReportStudent | null
+  summary?: Pick<CalculatedReportStudent, 'totalMarksObtained' | 'totalMarksObtainable' | 'average' | 'grade' | 'position'>
   publishedReport?: boolean
 }) {
   const schoolName = school?.name || 'YOUR SCHOOL NAME'
@@ -57,7 +61,7 @@ export function SchoolReportTemplate({
   return <section className="jss-report-preview">
     <div className="jss-report-preview-note">
       <strong>{publishedReport ? 'Published report card' : 'Blank template preview'}</strong>
-      <span>{className} · {termLayout === 'third' ? 'Third Term page' : 'First / Second Term page'} ({term}){academicYear ? ` · ${academicYear}` : ''}. {publishedReport ? 'Only saved test and examination scores are shown; grading rules are not configured here.' : 'No student details, marks, or grading calculations are filled in.'}</span>
+      <span>{className} · {termLayout === 'third' ? 'Third Term page' : 'First / Second Term page'} ({term}){academicYear ? ` · ${academicYear}` : ''}. {publishedReport ? 'Results use the school-approved workbook calculation rules.' : 'No student details, marks, or grading calculations are filled in.'}</span>
     </div>
     <article className="jss-report-card" aria-label={`${student?.name ? `${student.name} ` : 'Blank '}${schoolName} ${className} ${term} report template`}>
       {school?.logoUrl && <img className="jss-report-watermark" src={school.logoUrl} alt="" aria-hidden="true"/>}
@@ -90,21 +94,43 @@ export function SchoolReportTemplate({
 
       <section className="jss-report-grid" aria-label="Subject scores">
         <table className="jss-report-subject-table">
-          <thead><tr><th scope="col">Subject</th><th scope="col">Test / 40</th><th scope="col">Examination / 60</th><th scope="col">Total / 100</th></tr></thead>
+          <thead><tr>
+            <th scope="col">Subject</th>
+            <th scope="col">Test / 40</th>
+            <th scope="col">Examination / 60</th>
+            <th scope="col">Total / 100</th>
+            {isThirdTerm
+              ? <><th scope="col">First Term</th><th scope="col">Second Term</th><th scope="col">Three-term average</th><th scope="col">Grade</th><th scope="col">Position</th></>
+              : <><th scope="col">Grade</th><th scope="col">Class average</th><th scope="col">Remark</th><th scope="col">Position</th></>}
+          </tr></thead>
           <tbody>{subjects.map(subject => {
-            const total = typeof subject.testScore === 'number' && typeof subject.examScore === 'number'
+            const total = subject.total ?? (typeof subject.testScore === 'number' && typeof subject.examScore === 'number'
               ? subject.testScore + subject.examScore
-              : null
+              : null)
             return <tr key={`${subject.serialNumber}-${subject.name}`}>
               <th scope="row">{subject.name}</th>
               <td>{subject.testScore ?? ''}</td>
               <td>{subject.examScore ?? ''}</td>
               <td>{total ?? ''}</td>
+              {isThirdTerm
+                ? <>
+                    <td>{subject.firstTermTotal ?? ''}</td>
+                    <td>{subject.secondTermTotal ?? ''}</td>
+                    <td>{subject.average?.toFixed(1) ?? ''}</td>
+                    <td>{subject.grade ?? ''}</td>
+                    <td>{subject.position ? ordinal(subject.position) : ''}</td>
+                  </>
+                : <>
+                    <td>{subject.grade ?? ''}</td>
+                    <td>{subject.classAverage?.toFixed(2) ?? ''}</td>
+                    <td>{subject.remark ?? ''}</td>
+                    <td>{subject.position ? ordinal(subject.position) : ''}</td>
+                  </>}
             </tr>
           })}</tbody>
         </table>
       </section>
-      {isThirdTerm && !publishedReport && <ReportTotals />}
+      <ReportTotals summary={summary}/>
     </article>
   </section>
 }

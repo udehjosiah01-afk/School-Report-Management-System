@@ -1,5 +1,15 @@
 import { createServerFn } from '@tanstack/react-start'
-import { schoolClassNames, subjectsForClassName } from '../data/curriculum'
+import {
+  isSeniorSecondaryClassName,
+  isValidSeniorStudentSubjectCount,
+  schoolClassNames,
+  subjectsForClassName,
+} from '../data/curriculum'
+import {
+  calculateWorkbookReportResults,
+  isResultTerm,
+  type WorkbookStudentScores,
+} from '../data/workbook-calculations'
 import { getCurriculumPack } from '../data/curriculum-packs'
 import { isUuid } from '../data/score-validation'
 import {
@@ -218,8 +228,11 @@ export const createAcademicTerm = createServerFn({ method: 'POST' }).validator(v
 export const createStudent = createServerFn({ method: 'POST' }).validator(validateStudent).handler(async ({ data }) => {
   const { requireStaff, getDb, schoolClasses, and, eq, classSubjects, inArray, students, studentEnrollments, studentSubjects } = await loadServerDependencies(); const staff = await requireStaff('admin'); const db = getDb()
   return db.transaction(async tx => {
-    const [schoolClass] = await tx.select({ id: schoolClasses.id }).from(schoolClasses).where(and(eq(schoolClasses.id, data.classId), eq(schoolClasses.schoolId, staff.schoolId))).limit(1)
+    const [schoolClass] = await tx.select({ id: schoolClasses.id, name: schoolClasses.name }).from(schoolClasses).where(and(eq(schoolClasses.id, data.classId), eq(schoolClasses.schoolId, staff.schoolId))).limit(1)
     if (!schoolClass) throw new Error('The selected class is not part of your school.')
+    if (isSeniorSecondaryClassName(schoolClass.name) && !isValidSeniorStudentSubjectCount(data.subjectIds.length)) {
+      throw new Error('Senior secondary learners must be registered for 10 or 11 selected subjects.')
+    }
     const configured = await tx.select({ subjectId: classSubjects.subjectId }).from(classSubjects).where(and(eq(classSubjects.schoolId, staff.schoolId), eq(classSubjects.classId, data.classId), inArray(classSubjects.subjectId, data.subjectIds)))
     if (configured.length !== data.subjectIds.length) throw new Error('Students can only be enrolled in subjects configured for their class.')
     const [existing] = await tx.select().from(students).where(and(eq(students.schoolId, staff.schoolId), eq(students.admissionNumber, data.admissionNumber))).limit(1)
@@ -566,7 +579,9 @@ export const verifyParentReportAccess = createServerFn({ method: 'POST' })
       termId: academicTerms.id,
       termName: academicTerms.name,
       academicYear: academicTerms.academicYear,
+      classId: schoolClasses.id,
       className: schoolClasses.name,
+      subjectId: subjects.id,
       subjectName: subjects.name,
       testScore: scoreEntries.testScore,
       examScore: scoreEntries.examScore,
@@ -601,24 +616,111 @@ export const verifyParentReportAccess = createServerFn({ method: 'POST' })
       .orderBy(asc(academicTerms.academicYear), asc(academicTerms.name), asc(subjects.name))
 
     const reports = new Map<string, {
+      termId: string
       termName: string
       academicYear: string
+      classId: string
       className: string
-      subjects: Array<{ name: string; serialNumber: number; testScore: number | null; examScore: number | null }>
+      subjects: Array<{ subjectId: string; name: string; serialNumber: number; testScore: number | null; examScore: number | null }>
     }>()
     for (const row of rows) {
       let report = reports.get(row.termId)
       if (!report) {
-        report = { termName: row.termName, academicYear: row.academicYear, className: row.className, subjects: [] }
+        report = {
+          termId: row.termId,
+          termName: row.termName,
+          academicYear: row.academicYear,
+          classId: row.classId,
+          className: row.className,
+          subjects: [],
+        }
         reports.set(row.termId, report)
       }
       report.subjects.push({
+        subjectId: row.subjectId,
         name: row.subjectName,
         serialNumber: report.subjects.length + 1,
         testScore: row.testScore,
         examScore: row.examScore,
       })
     }
+    const calculatedReports = await Promise.all([...reports.values()].map(async report => {
+      if (!isResultTerm(report.termName)) return null
+      const cohortRows = await db.select({
+        studentId: studentEnrollments.studentId,
+        subjectId: subjects.id,
+        subjectName: subjects.name,
+        termName: academicTerms.name,
+        testScore: scoreEntries.testScore,
+        examScore: scoreEntries.examScore,
+      }).from(studentEnrollments)
+        .innerJoin(students, and(
+          eq(students.id, studentEnrollments.studentId),
+          eq(students.schoolId, school.id),
+        ))
+        .innerJoin(studentSubjects, and(
+          eq(studentSubjects.enrollmentId, studentEnrollments.id),
+          eq(studentSubjects.schoolId, school.id),
+        ))
+        .innerJoin(subjects, and(
+          eq(subjects.id, studentSubjects.subjectId),
+          eq(subjects.schoolId, school.id),
+        ))
+        .innerJoin(academicTerms, and(
+          eq(academicTerms.schoolId, school.id),
+          eq(academicTerms.academicYear, report.academicYear),
+        ))
+        .leftJoin(scoreEntries, and(
+          eq(scoreEntries.schoolId, school.id),
+          eq(scoreEntries.enrollmentId, studentEnrollments.id),
+          eq(scoreEntries.subjectId, studentSubjects.subjectId),
+          eq(scoreEntries.termId, academicTerms.id),
+        ))
+        .where(and(
+          eq(studentEnrollments.schoolId, school.id),
+          eq(studentEnrollments.classId, report.classId),
+          eq(studentEnrollments.academicYear, report.academicYear),
+        ))
+      const cohort = new Map<string, WorkbookStudentScores>()
+      for (const row of cohortRows) {
+        let learner = cohort.get(row.studentId)
+        if (!learner) {
+          learner = { studentId: row.studentId, subjects: [] }
+          cohort.set(row.studentId, learner)
+        }
+        let subject = learner.subjects.find(item => item.subjectId === row.subjectId)
+        if (!subject) {
+          subject = { subjectId: row.subjectId, name: row.subjectName, terms: {} }
+          learner.subjects.push(subject)
+        }
+        if (isResultTerm(row.termName)) {
+          subject.terms[row.termName] = {
+            testScore: row.testScore,
+            examScore: row.examScore,
+          }
+        }
+      }
+      const calculated = calculateWorkbookReportResults(report.termName, [...cohort.values()])
+        .find(item => item.studentId === student.id)
+      if (!calculated) return null
+      return {
+        termId: report.termId,
+        termName: report.termName,
+        academicYear: report.academicYear,
+        className: report.className,
+        subjects: calculated.subjects.map((subject, index) => ({
+          ...subject,
+          serialNumber: index + 1,
+        })),
+        summary: {
+          totalMarksObtained: calculated.totalMarksObtained,
+          totalMarksObtainable: calculated.totalMarksObtainable,
+          average: calculated.average,
+          grade: calculated.grade,
+          position: calculated.position,
+        },
+      }
+    }))
     return {
       school,
       student: {
@@ -626,7 +728,7 @@ export const verifyParentReportAccess = createServerFn({ method: 'POST' })
         admissionNumber: student.admissionNumber,
         passportPhotoDataUrl: student.passportPhotoDataUrl,
       },
-      reports: [...reports.values()],
+      reports: calculatedReports.filter(report => report !== null),
     }
   })
 

@@ -30,8 +30,17 @@ export function getReportTemplateId(className: string, term: ResultTerm): Report
 export type ReportTemplateSubject = {
   name: string
   serialNumber: number
+  subjectId?: string
   testScore?: number | null
   examScore?: number | null
+  total?: number | null
+  firstTermTotal?: number | null
+  secondTermTotal?: number | null
+  average?: number | null
+  grade?: string | null
+  remark?: string | null
+  classAverage?: number | null
+  position?: number | null
 }
 
 function numberedSubjects(subjects: readonly string[]): ReportTemplateSubject[] {
