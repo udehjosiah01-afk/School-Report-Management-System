@@ -1,0 +1,69 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap');
+
+.cbt-page{min-height:100vh;background:#f7f9f7;color:#283c36;font-family:'DM Sans',sans-serif}
+.cbt-header{position:sticky;top:0;z-index:5}
+.cbt-content{max-width:980px;padding-top:44px;padding-bottom:72px}
+.cbt-content>h1{margin:8px 0;color:#253a32;font:800 clamp(30px,5vw,44px) Manrope,sans-serif;letter-spacing:-.04em}
+.cbt-content>p{color:#64766c;line-height:1.6}
+.cbt-panel{margin-top:24px;padding:clamp(20px,4vw,36px)}
+.cbt-panel-heading{display:flex;align-items:center;gap:14px;margin-bottom:20px}
+.cbt-panel-heading h2,.cbt-palette-heading h2,.cbt-results h2{margin:0;color:#263d33;font:750 20px Manrope,sans-serif}
+.cbt-panel-heading p{margin:5px 0 0;color:#718177;line-height:1.5}
+.cbt-icon{display:grid;width:48px;height:48px;flex:none;place-items:center;border-radius:14px;background:#e8f2e9;color:#467b58}
+.cbt-login-form{max-width:560px}
+.cbt-login-form .primary{display:flex;align-items:center;justify-content:center;gap:10px}
+.cbt-exam-details{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 4px}
+.cbt-exam-details span{padding:7px 10px;border:1px solid #e1e9e1;border-radius:999px;background:#f5f8f4;color:#52675a;font-size:12px;font-weight:650}
+.cbt-service-note{margin:10px 0 0;color:#748479;font-size:12px;line-height:1.6}
+.cbt-service-note code{padding:2px 5px;border-radius:4px;background:#f0f3ef;color:#395b43}
+.cbt-warning{border-color:#f4d0b1;background:#fff8f1;color:#865322}
+.cbt-exam-summary{display:flex;justify-content:space-between;align-items:center;gap:18px;margin:24px 0 14px;padding:17px 20px;border:1px solid #e4eae3;border-radius:14px;background:#fff;box-shadow:0 6px 22px #233a2b08}
+.cbt-exam-summary>div:first-child{display:grid;gap:3px}
+.cbt-exam-summary small,.cbt-score small{color:#839086;font-size:10px;font-weight:750;letter-spacing:.1em}
+.cbt-exam-summary strong{font:700 16px Manrope,sans-serif;color:#2d4437}
+.cbt-exam-summary span{color:#77857a;font-size:12px}
+.cbt-timer{display:grid;grid-template-columns:auto auto;align-items:center;column-gap:8px;color:#42794f;font:750 22px Manrope,sans-serif}
+.cbt-timer small{grid-column:2;font:500 11px 'DM Sans',sans-serif;text-align:right}
+.cbt-timer.urgent{color:#bb4538}
+.cbt-progress-track{height:8px;overflow:hidden;border-radius:999px;background:#e4ebe3}
+.cbt-progress-track span{display:block;height:100%;border-radius:inherit;background:#5b9a67;transition:width .2s ease}
+.cbt-question-card{margin-top:16px;padding:clamp(20px,4vw,34px)}
+.cbt-question-meta{display:flex;justify-content:space-between;gap:12px;color:#76857a;font-size:11px;font-weight:750;letter-spacing:.06em}
+.cbt-question-card>h2{margin:24px 0;color:#273d32;font:700 clamp(20px,3vw,26px) Manrope,sans-serif;line-height:1.45;white-space:pre-wrap}
+.cbt-options{display:grid;gap:10px;margin:0;padding:0;border:0}
+.cbt-option{display:flex;align-items:center;gap:12px;min-height:58px;padding:12px 15px;border:1px solid #e2e9e1;border-radius:12px;background:#fff;color:#42564a;cursor:pointer;transition:border-color .15s,background .15s}
+.cbt-option:hover{border-color:#91b99a;background:#f6faf5}
+.cbt-option.selected{border-color:#76a984;background:#eff7ef;color:#315d3b}
+.cbt-option input{width:17px;height:17px;margin:0;accent-color:#4f8d5c}
+.cbt-option-letter{display:grid;width:28px;height:28px;flex:none;place-items:center;border-radius:8px;background:#f0f4ef;color:#64776a;font-size:12px;font-weight:750}
+.cbt-option.selected .cbt-option-letter{background:#dceede;color:#3f754a}
+.cbt-question-actions{display:flex;justify-content:space-between;gap:12px;margin-top:24px}
+.cbt-question-actions button{display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.cbt-palette-section{margin-top:16px;padding:20px 24px}
+.cbt-palette-heading{display:flex;align-items:center;justify-content:space-between;gap:15px}
+.cbt-palette-heading h2{font-size:16px}
+.cbt-palette-heading>span{display:flex;align-items:center;gap:7px;color:#78867b;font-size:11px}
+.cbt-palette-heading i{width:9px;height:9px;border-radius:50%;background:#56a266}
+.cbt-palette{display:grid;grid-template-columns:repeat(auto-fill,minmax(42px,1fr));gap:8px;margin-top:16px}
+.cbt-palette button{min-height:40px;padding:6px;border:1px solid #dfe7df;border-radius:9px;background:#fff;color:#5d7062;font:650 13px 'DM Sans',sans-serif;cursor:pointer}
+.cbt-palette button.answered{border-color:#65a575;background:#e7f4e8;color:#347147}
+.cbt-palette button.current{outline:2px solid #c9a84b;outline-offset:1px}
+.cbt-confirm-backdrop{position:fixed;inset:0;z-index:20;display:grid;place-items:center;padding:20px;background:#1c2a2380}
+.cbt-confirm-dialog{width:min(100%,440px);padding:26px;border-radius:16px;background:#fff;box-shadow:0 20px 70px #0003}
+.cbt-confirm-dialog h2{margin:0;color:#293d32;font:750 21px Manrope,sans-serif}
+.cbt-confirm-dialog p{color:#697a6d;line-height:1.6}
+.cbt-confirm-dialog>div{display:flex;justify-content:flex-end;gap:10px;margin-top:22px}
+.cbt-results{display:grid;gap:16px;margin-top:24px;padding:clamp(20px,4vw,32px)}
+.cbt-score{display:flex;align-items:center;gap:14px;padding:18px;border:1px solid #dcebdd;border-radius:12px;background:#f2f8f1;color:#4b8959}
+.cbt-score>div{display:grid;gap:4px}
+.cbt-score strong{color:#315d3b;font:800 30px Manrope,sans-serif}
+.cbt-score strong span{color:#79917d;font-size:18px}
+.cbt-result-student{display:grid;gap:4px;color:#31483a}
+.cbt-result-student span{color:#748278;font-size:13px}
+.cbt-review-item{padding:16px;border:1px solid #e3eae2;border-radius:12px;background:#fbfcfb}
+.cbt-review-item>strong{color:#344b3b;line-height:1.5}
+.cbt-review-item p{margin:12px 0 0;color:#708074;font-size:13px}
+.cbt-review-item .correct{color:#367746;font-weight:700}
+.cbt-review-item .incorrect{color:#bc5145;font-weight:700}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+@media(max-width:600px){.cbt-content{padding-top:28px}.cbt-exam-summary{align-items:flex-start;padding:15px}.cbt-question-actions{flex-wrap:wrap}.cbt-question-actions button{flex:1}.cbt-confirm-dialog>div{flex-direction:column-reverse}.cbt-confirm-dialog button{width:100%}}
